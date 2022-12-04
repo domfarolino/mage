@@ -1,0 +1,4 @@
+interface Demo {
+  Method1(int a, string b, string c);
+  SendName(string name, bool is_first_name);
+}

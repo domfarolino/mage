@@ -1,0 +1,4 @@
+interface TestInterface {
+  Method1(int my_int, double my_double, string my_string);
+  SendMoney(int amount, string currency);
+}

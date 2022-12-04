@@ -1,0 +1,12 @@
+# Generated Files
+*.[oa]
+*.py[co]
+bazel-*
+
+# OS Files
+*~
+.DS_Store
+
+# IDE directories
+.idea
+.idea/*

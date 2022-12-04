@@ -1,0 +1,13 @@
+build --cxxopt="-std=c++17"
+# For now the default is debug builds
+build --copt="-g" --strip=never --spawn_strategy=standalone
+
+build --experimental_cc_implementation_deps
+
+# When tests run custom binaries for child processes, the path for the binary
+# differs depending on whether you run the tests with `bazel test` vs
+# `./bazel-bin/[...]. This flag allows us to set the custom `BAZEL_TEST`
+# preprocessor directive depending on whether the test is running due to
+# `bazel test` or not. This directive helps the test set up the right path for
+# the binary in all cases. See `//mage/core/mage_test.cc` for an example.
+test --define BAZEL_TEST=true
