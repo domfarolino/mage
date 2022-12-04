@@ -352,7 +352,7 @@ mage::Remote<magen::BoostrapInterface> remote = /* ... */;
 
 // Create two entangled message pipes, and send one (for use as a receiver) to
 // the remote process.
-std::vector<mage::MessagePipe> new_pipes = mage::Core::CreateMessagePipes();
+std::vector<mage::MessagePipe> new_pipes = mage::CreateMessagePipes();
 
 remote->SendCompositorReceiver(new_pipes[1]);
 mage::Remote<magen::Compositor> compositor_remote(new_pipes[0]);
@@ -373,12 +373,12 @@ you do this.
 
 There are three public APIs for establishing the initial message pipe connection
 across two processes:
- - **Called in every process using Mage**: `mage::Core::Init()`. Performs
+ - **Called in every process using Mage**: `mage::Init()`. Performs
    routine setup, and must be called before any other Mage APIs are called
  - **Called from the parent process[^2]**:
-   `mage::Core::SendInvitationAndGetMessagePipe(int socket)`
+   `mage::SendInvitationAndGetMessagePipe(int socket)`
  - **Called from the child process**:
-   `mage::Core::AcceptInvitation(int socket, std::function<void(MessagePipe)> callback)`
+   `mage::AcceptInvitation(int socket, std::function<void(MessagePipe)> callback)`
 
 First, the parent process must create a native socket pair that the child
 process will inherit upon creation. The parent passes the pipe into the
@@ -390,7 +390,7 @@ receiver).
 
 ```cpp
 int fd = /* ... */;
-mage::MessagePipe pipe = mage::Core::SendInvitationAndGetMessagePipe(fd);
+mage::MessagePipe pipe = mage::SendInvitationAndGetMessagePipe(fd);
 mage::Remote<magen::BoostrapInterface> remote(pipe);
 remote->MyMessageHere("payload!");
 ```
@@ -401,7 +401,7 @@ invitation. This is typically communicated via an argument passed to the child
 binary when the parent launches it.
 
 When the child recovers the native socket, from any thread it can call
-`mage::Core::AcceptInvitation(socket, callback)` to accept an invitation on the
+`mage::AcceptInvitation(socket, callback)` to accept an invitation on the
 socket. This API takes a callback that runs on the same thread that called
 `AccceptInvitation()`, after the invitation gets processed on the IO thread. The
 callback gives the child a `mage::MessagePipe` that's connected to the parent
@@ -420,11 +420,11 @@ int main(int argc, char** argv) {
   io_thread.GetTaskRunner()->PostTask(main_thread->QuitClosure());
   main_thread->Run(); // Wait for the IO thread to get set up.
 
-  mage::Core::Init();
+  mage::Init();
 
   CHECK_EQ(argc, 2);
   int fd = std::stoi(argv[1]);
-  mage::Core::AcceptInvitation(fd, &OnInvitationAccepted);
+  mage::AcceptInvitation(fd, &OnInvitationAccepted);
 
   // This will run the event loop indefinitely, running tasks when they are
   // posted (including the `OnInvitationAccepted()` function above.

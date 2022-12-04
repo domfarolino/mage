@@ -4,10 +4,12 @@ cc_library(
   name = "core",
   hdrs = [
     "channel.h",
+    "core.h",
     "endpoint.h",
     "node.h",
   ],
   srcs = [
+    "api.cc",
     "channel.cc",
     "core.cc",
     "endpoint.cc",

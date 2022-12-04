@@ -10,10 +10,10 @@
 #include "base/scheduling/scheduling_handles.h"
 #include "base/scheduling/task_loop_for_io.h"
 #include "base/threading/thread_checker.h"
+#include "mage/public/api.h"
 #include "mage/public/bindings/message_pipe.h"
 #include "mage/public/bindings/receiver.h"
 #include "mage/public/bindings/remote.h"
-#include "mage/public/core.h"
 #include "mage/test/magen/callback_interface.magen.h"  // Generated.
 #include "mage/test/magen/first_interface.magen.h"     // Generated.
 #include "mage/test/magen/fourth_interface.magen.h"    // Generated.
@@ -152,11 +152,11 @@ int main(int argc, char** argv) {
   io_thread.GetTaskRunner()->PostTask(main_thread->QuitClosure());
   main_thread->Run();
 
-  mage::Core::Init();
+  mage::Init();
 
   CHECK_EQ(argc, 2);
   int fd = std::stoi(argv[1]);
-  mage::Core::AcceptInvitation(fd, &OnInvitationAccepted);
+  mage::AcceptInvitation(fd, &OnInvitationAccepted);
 
   main_thread->Run();
   return 0;

@@ -2,8 +2,8 @@
 
 #include "base/scheduling/task_runner.h"
 #include "base/threading/thread_checker.h"
+#include "mage/core/core.h"
 #include "mage/public/bindings/receiver_delegate.h"
-#include "mage/public/core.h"
 
 namespace mage {
 

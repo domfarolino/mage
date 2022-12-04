@@ -7,7 +7,7 @@
 #include "base/check.h"
 #include "mage/public/bindings/message_pipe.h"
 #include "mage/public/bindings/receiver_delegate.h"
-#include "mage/public/core.h"
+#include "mage/public/api.h"
 #include "mage/public/message.h"
 
 namespace magen {
@@ -130,7 +130,7 @@ class {{Interface}}Proxy {
       // use it to fill out a `mage::EndpointDescriptor` which is written to the message
       // buffer.
       mage::EndpointDescriptor& endpoint_descriptor_to_populate = message_fragment.data()->{{ argument_pair[1] }};
-      mage::Core::PopulateEndpointDescriptor({{argument_pair[1]}}, local_handle_, endpoint_descriptor_to_populate);
+      mage::internal::PopulateEndpointDescriptor({{argument_pair[1]}}, local_handle_, endpoint_descriptor_to_populate);
       endpoints_to_write.push_back(endpoint_descriptor_to_populate);
     }
   {% endif %}
@@ -157,7 +157,7 @@ class {{Interface}}Proxy {
     // End writing endpoints.
 
     message.FinalizeSize();
-    mage::Core::SendMessage(local_handle_, std::move(message));
+    mage::internal::SendMessage(local_handle_, std::move(message));
   }
   {%- endfor %}
 
@@ -179,7 +179,7 @@ class {{Interface}}ReceiverStub : public mage::ReceiverDelegate, public std::ena
     // Set outselves up as the official delegate for the underlying endpoint
     // associated with |local_handle_|. That way any messages it receives, we'll
     // be able to deserialize and forward to the implementation.
-    mage::Core::BindReceiverDelegateToEndpoint(local_handle, weak_from_this(), std::move(impl_task_runner));
+    mage::internal::BindReceiverDelegateToEndpoint(local_handle, weak_from_this(), std::move(impl_task_runner));
   }
 
  private:

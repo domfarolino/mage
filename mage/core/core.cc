@@ -1,4 +1,4 @@
-#include "mage/public/core.h"
+#include "mage/core/core.h"
 
 #include <unistd.h>
 #include <cstdlib>

@@ -9,9 +9,9 @@
 #include "base/scheduling/scheduling_handles.h"
 #include "base/scheduling/task_loop_for_io.h"
 #include "mage/demo/magen/demo.magen.h"  // Generated.
+#include "mage/public/api.h"
 #include "mage/public/bindings/message_pipe.h"
 #include "mage/public/bindings/receiver.h"
-#include "mage/public/core.h"
 
 class DemoImpl : public magen::Demo {
  public:
@@ -41,11 +41,11 @@ void OnInvitationAccepted(mage::MessagePipe message_pipe) {
 int main(int argc, char** argv) {
   printf("-------- Child process --------\n");
   auto task_loop = base::TaskLoop::Create(base::ThreadType::IO);
-  mage::Core::Init();
+  mage::Init();
 
   int fd = std::stoi(argv[1]);
 
-  mage::Core::AcceptInvitation(fd, &OnInvitationAccepted);
+  mage::AcceptInvitation(fd, &OnInvitationAccepted);
   task_loop->Run();
   return 0;
 }
