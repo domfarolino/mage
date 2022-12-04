@@ -2,6 +2,12 @@
 
 #include "mage/core/core.h"
 
+////////////////////////////////////////////////////////////////////////////////
+// These are the concrete implementation of the public API entrypoints defined
+// in `//mage/public/api.h`. They just defer to the `Core` class which is
+// responsible for implementing things in an encapsulated way.
+////////////////////////////////////////////////////////////////////////////////
+
 namespace mage {
 
 void Init(bool verbose) {

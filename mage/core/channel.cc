@@ -11,7 +11,6 @@
 #include "base/scheduling/task_loop_for_io.h"
 #include "base/threading/thread_checker.h"  // for CHECK_ON_THREAD().
 #include "mage/core/endpoint.h"
-#include "mage/public/api.h"
 
 namespace mage {
 

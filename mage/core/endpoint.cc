@@ -2,7 +2,7 @@
 
 #include "base/scheduling/task_runner.h"
 #include "base/threading/thread_checker.h"
-#include "mage/public/api.h"
+#include "mage/core/core.h"
 #include "mage/public/bindings/receiver_delegate.h"
 
 namespace mage {
@@ -49,7 +49,7 @@ void Endpoint::AcceptMessageOnDelegateThread(Message message) {
   for (const EndpointDescriptor* const endpoint_descriptor :
        endpoints_in_message) {
     MessagePipe local_pipe =
-        mage::internal::RecoverExistingMessagePipeFromEndpointDescriptor(
+        mage::Core::RecoverExistingMessagePipeFromEndpointDescriptor(
             *endpoint_descriptor);
     endpoint_descriptor->Print();
     LOG("     Queueing pipe to message after recovering endpoint");
