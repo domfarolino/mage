@@ -61,7 +61,7 @@ internal messaging providers such as [ipcz], for example.
   - [4. Use a `Remote` to send cross-process IPCs](#4-use-a-remote-to-send-cross-process-ipcs)
   - [Sending `MessagePipes` cross-process](#sending-messagepipes-cross-process)
 - [Mage invitations](#mage-invitations)
-- [Threading & task scheduling dependencies](#threading--task-scheduling-dependencies)
+- [Threading & task scheduling](#threading--task-scheduling)
 - [Platform support](#platform-support)
 - [Building and running the tests](#building-and-running-the-tests)
   - [Debugging](#debugging)
@@ -457,7 +457,7 @@ int main(int argc, char** argv) {
 }
 ```
 
-## Threading & task scheduling dependencies
+## Threading & task scheduling
 
 Since Mage is multithreaded and inherently asynchronous, it has some threading
 and scheduling requirements. While Mage is in ["MVP" mode], it has a hard
@@ -466,24 +466,23 @@ alongside Mage. That means _right now_, in order to use Mage you have to use
 [`//base`] as your application's primary threading and scheduling library.
 
 **This is only temporary**: work is being done to decouple the two with the end
-goal of Mage being able to be embedded by any application that provides a
-sufficient implementation for these requirements. Some good implementations of
-these dependencies could be:
+goal of being able to use Mage in any application that provides a sufficient
+implementation for these generic requirements. Some good implementations of
+these requirements could be:
  - [`//base`]
  - [concurrencpp](https://github.com/David-Haim/concurrencpp/)
  - Facebook's [libunifex](https://github.com/facebookexperimental/libunifex)
  - Perhaps other libraries from: https://github.com/topics/asyncio?l=c%2B%2B
 
-Mage also requires of a task scheduling library, the ability to asynchronously
-listen to I/O from native platform sockets, such as Unix file descriptors or
-Windows HANDLEs. All of this is provided by default by [`//base`], which was
-developed with Mage in mind.
+A task scheduling library must also support the ability to asynchronously listen
+to I/O from native platform sockets, such as Unix file descriptors or Windows
+HANDLEs. All of this is provided by default in [`//base`], which was developed
+with Mage in mind.
 
 ## Platform support
 
-Since Mage is in ["MVP" mode], it only supports Linux and macOS at the time
-being. Windows support for Mage and the [`//base`] library are currently
-underway though.
+Since Mage is in ["MVP" mode] right now, it only supports Linux and macOS.
+Windows support for Mage and the [`//base`] library are currently underway.
 
 ## Building and running the tests
 
