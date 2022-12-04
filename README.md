@@ -337,7 +337,7 @@ int main() {
 
 ### Sending `MessagePipes` cross-process
 
-The previous section illustrates sending a message over a bound message pipe to
+The previous sections illustrate sending a message over a bound message pipe to
 another process, using a single remote/receiver pair that spans the two
 processes. But usually you don't want just a single interface responsible for
 every single message sent between two processes. That leads to bad layering and
