@@ -486,17 +486,39 @@ underway though.
 
 ## Building and running the tests
 
-With the repository downloaded, you can run:
+With the repository downloaded, to build and run the demo, run:
+
+```sh
+$ bazel build mage/demo/parent mage/demo/child
+$ ./bazel-bin/mage/demo/parent
+```
+
+To run the tests, run one of the following:
 
 ```sh
 $ bazel test mage/mage_tests
 ```
 
-To **run the demo**, do:
+or...
+
 
 ```sh
-$ bazel build mage/demo/parent mage/demo/child
-$ ./bazel-bin/mage/demo/parent
+$ bazel build mage/mage_tests
+$ ./bazel-bin/mage/mage_tests
+```
+
+### Debugging
+
+Mage is built with debugging symbols by default (see [`.bazelrc`](.bazelrc)). To
+debug a failing test or other internals with `lldb`, run:
+
+```sh
+$ bazel build mage/mage_tests
+$ lldb ./bazel-bin/mage/mage_tests
+# Set breakpoints
+$ br s -n Node::SendMessage
+$ br s -f mage_test.cc -l <line_number>
+$ run --gtest_filter="MageTest.TestFoo"
 ```
 
 
