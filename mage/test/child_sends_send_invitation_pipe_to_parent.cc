@@ -10,9 +10,9 @@
 #include "base/scheduling/scheduling_handles.h"
 #include "base/scheduling/task_loop_for_io.h"
 #include "base/threading/thread_checker.h"
+#include "mage/public/api.h"
 #include "mage/public/bindings/message_pipe.h"
 #include "mage/public/bindings/remote.h"
-#include "mage/public/core.h"
 #include "mage/test/magen/first_interface.magen.h"   // Generated.
 #include "mage/test/magen/second_interface.magen.h"  // Generated.
 
@@ -24,17 +24,16 @@ int main(int argc, char** argv) {
   io_thread.GetTaskRunner()->PostTask(main_thread->QuitClosure());
   main_thread->Run();
 
-  mage::Core::Init();
+  mage::Init();
 
   CHECK_EQ(argc, 2);
   int fd = std::stoi(argv[1]);
-  mage::MessagePipe message_pipe =
-      mage::Core::SendInvitationAndGetMessagePipe(fd);
+  mage::MessagePipe message_pipe = mage::SendInvitationAndGetMessagePipe(fd);
 
   mage::Remote<magen::FirstInterface> remote;
   remote.Bind(message_pipe);
 
-  std::vector<mage::MessagePipe> pipes = mage::Core::CreateMessagePipes();
+  std::vector<mage::MessagePipe> pipes = mage::CreateMessagePipes();
   remote->SendSecondInterfaceReceiver(pipes[1]);
 
   mage::Remote<magen::SecondInterface> second_remote;

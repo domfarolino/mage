@@ -15,12 +15,12 @@ cc_library(
 cc_library(
   name = "include",
   hdrs = [
+    "api.h",
     "bindings/message_pipe.h",
     "bindings/receiver_delegate.h",
     "bindings/receiver.h",
     "bindings/remote.h",
     "message.h",
-    "core.h",
     "util.h",
   ],
   # Only make `:include` visible to `public` and things inside of //mage, since

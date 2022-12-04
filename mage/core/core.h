@@ -27,7 +27,6 @@ class Core {
   static void Init(bool verbose = false);
   static void ShutdownCleanly();
 
-  // TODO(domfarolino): This should not actually be used outside of mage/core.
   static Core* Get();
   static std::vector<MessagePipe> CreateMessagePipes();
   static MessagePipe SendInvitationAndGetMessagePipe(

@@ -8,9 +8,9 @@
 
 #include "base/scheduling/task_loop_for_io.h"
 #include "mage/demo/magen/demo.magen.h"  // Generated.
+#include "mage/public/api.h"
 #include "mage/public/bindings/message_pipe.h"
 #include "mage/public/bindings/remote.h"
-#include "mage/public/core.h"
 
 int main() {
   printf("-------- Parent process --------\n");
@@ -27,10 +27,10 @@ int main() {
   }
 
   auto task_loop = base::TaskLoop::Create(base::ThreadType::IO);
-  mage::Core::Init();
+  mage::Init();
 
   mage::MessagePipe local_message_pipe =
-      mage::Core::SendInvitationAndGetMessagePipe(fds[0]);
+      mage::SendInvitationAndGetMessagePipe(fds[0]);
 
   mage::Remote<magen::Demo> remote(local_message_pipe);
   remote->Method1(1, "dom", "farolino");

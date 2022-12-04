@@ -4,8 +4,8 @@
 
 #include "base/check.h"
 #include "base/threading/thread_checker.h"  // for CHECK_ON_THREAD().
+#include "mage/core/core.h"
 #include "mage/core/endpoint.h"
-#include "mage/public/core.h"
 #include "mage/public/message.h"
 
 namespace mage {

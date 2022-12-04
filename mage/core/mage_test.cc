@@ -3,26 +3,27 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include <string>
 #include <memory>
+#include <string>
 
 #include "base/callback.h"
 #include "base/scheduling/task_loop_for_io.h"
-#include "base/threading/thread_checker.h" // for CHECK_ON_THREAD().
+#include "base/threading/thread_checker.h"  // for CHECK_ON_THREAD().
 #include "gtest/gtest.h"
+#include "mage/core/core.h"
+#include "mage/core/endpoint.h"
+#include "mage/core/node.h"
+#include "mage/public/api.h"
+#include "mage/public/bindings/message_pipe.h"
 #include "mage/public/bindings/receiver.h"
 #include "mage/public/bindings/remote.h"
-#include "mage/public/core.h"
-#include "mage/public/bindings/message_pipe.h"
-#include "mage/core/node.h"
-#include "mage/core/endpoint.h"
-#include "mage/test/magen/callback_interface.magen.h" // Generated.
-#include "mage/test/magen/first_interface.magen.h"    // Generated.
-#include "mage/test/magen/handle_accepter.magen.h"    // Generated.
-#include "mage/test/magen/second_interface.magen.h"   // Generated.
-#include "mage/test/magen/third_interface.magen.h"    // Generated.
-#include "mage/test/magen/fourth_interface.magen.h"   // Generated.
-#include "mage/test/magen/test.magen.h"               // Generated.
+#include "mage/test/magen/callback_interface.magen.h"  // Generated.
+#include "mage/test/magen/first_interface.magen.h"     // Generated.
+#include "mage/test/magen/fourth_interface.magen.h"    // Generated.
+#include "mage/test/magen/handle_accepter.magen.h"     // Generated.
+#include "mage/test/magen/second_interface.magen.h"    // Generated.
+#include "mage/test/magen/test.magen.h"                // Generated.
+#include "mage/test/magen/third_interface.magen.h"     // Generated.
 
 namespace mage {
 
