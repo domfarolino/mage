@@ -43,7 +43,7 @@ void BindReceiverDelegateToEndpoint(
 // More obscure helpers.
 
 // `handle_to_send` is about to be sent over an existing connection described
-// by `handle_of_preexisting_connection`. This method fills out
+// by `handle_of_preexisting_connection`. This function fills out
 // `endpoint_descriptor_to_populate`, which includes generating a new
 // `EndpointDescriptor::cross_node_endpoint_name` just in case
 // `handle_to_send` goes cross-node/process. If it does, `Node::SendMessage()`
