@@ -17,7 +17,7 @@ library developed alongside Mage, although design work for separating the two
 entirely is being considered, to make Mage even more standalone. Mage is also
 built with [Bazel] but can be integrated with other toolchains.
 
-<details><summary>History!</summary>
+<details><summary>History</summary>
 
 The user-facing IDL portion of Mojo was based on Darin Fisher's [ipc_idl]
 prototype, which describes a very similar IDL that python generates C++ bindings
@@ -46,50 +46,75 @@ from the public bindings enough such that we could experiment with other
 internal messaging providers such as [ipcz], for example.
 </details>
 
+----
+
+### Table of contents
+
+- [Overview](#overview)
+  - [`mage::Remote<T>`](#mageremotet)
+  - [`mage::Receiver<T>`](#magereceivert)
+- [Magen Interface Definition Language (IDL)](#magen-interface-definition-language-idl)
+- [Using Mage in your application](#using-mage-in-your-application)
+  - [1. Write your interface in a `.magen` file](#1-write-your-interface-in-a-magen-file)
+  - [2. Build your `.magen` file](#2-build-your-magen-file)
+  - [3. Implement your interface in C++](#3-implement-your-interface-in-c)
+  - [4. Use a `Remote` to send cross-process IPCs](#4-use-a-remote-to-send-cross-process-ipcs)
+  - [Sending `MessagePipes` cross-process](#sending-messagepipes-cross-process)
+- [Mage invitations](#mage-invitations)
+- [Threading & task scheduling dependencies](#threading--task-scheduling-dependencies)
+- [Platform support](#platform-support)
+- [Building and running the tests](#building-and-running-the-tests)
+- [Design limitations](#design-limitations)
+- [Security considerations](#security-considerations)
+
+----
+
+
 ## Overview
 
 Mage IPC allows you to seamlessly send asynchronous messages to an object that
 lives in another process, thread, or even the same thread, without the sender
-having to know anything about where the target object actually is.
+having to know anything about where the target object actually is. Messages are
+described by user-provided interface files.
 
-To get started, you need to be familiar with three concepts from its public API:
+To get started, you need to be familiar with three concepts from the [public
+API]:
  - `mage::MessagePipe`
- - `mage::Remote`
- - `mage::Receiver`
+ - `mage::Remote<T>`
+ - `mage::Receiver<T>`
 
-Messages are passed over bidirectional message pipes, each end of which is
-represented by a `MessagePipe`, which can be passed across processes.
-Ultimately, one `MessagePipe` will get bound to a `Remote` and its corresponding
-pipe will get bound to a `Receiver`. It is through these objects that arbitrary
-user messages get passed as IPCs.
+Messages are sent over bidirectional message pipes, each end of which is
+represented by a `mage::MessagePipe`, which can be passed over interfaces, even
+to other processes. Given a pair of entangled `MessagePipe`s, you'll ultimately
+bind one end to a `Remote` and the other to a `Receiver`. It is through these
+objects that arbitrary user messages get passed as IPCs.
 
-### `mage::Remote`
+### `mage::Remote<T>`
 
 Once bound, a `Remote<magen::Foo>` represents a local "proxy" for a `magen::Foo`
 interface, whose concrete implementation may live in another process. You can
-synchronously invoke any of `magen::Foo` interface's methods on a
-`Remote<magen::Foo>`, and the remote proxy will forward the message to the right
-place, wherever the target object actually lives, even if it is moving around.
-See the next section for defining interfaces in Magen IDL.
+synchronously invoke any of the `magen::Foo` interface methods on a
+`Remote<magen::Foo>`, and the proxy will forward the message to the right place,
+wherever the corresponding `Receiver<magen::Foo>` lives, even if it's moving
+around.
 
 ```cpp
-MessagePipe remote_pipe = /* get pipe from somewhere */;
+mage::MessagePipe remote_pipe = /* get pipe from somewhere */;
 mage::Remote<magen::Foo> remote(remote_pipe);
 
 // Start sending IPCs!
 remote->ArbitraryMessage("some payload");
 ```
 
-### `mage::Receiver`
+### `mage::Receiver<T>`
 
-Messages sent over a bound `mage::Remote<magen::Foo>` get queued on the other
-end's `MessagePipe`, until _it_ is bound to a corresponding
-`mage::Receiver<magen::Foo>`. A `Receiver<magen::Foo>` represents the concrete
-implementation of a Mage interface `magen::Foo`. The receiver itself does not
-handle messages sent by the remote, but rather it has a reference to a
-user-provided C++ object that implements the `magen::Foo` interface, and it
-forwards messages to it. A receiver for a Mage interface is typically owned by
-the concrete implementation of that interface.
+Messages sent over a bound `Remote<magen::Foo>` get queued on the other end's
+`MessagePipe` until _it_ is bound to a corresponding `Receiver<magen::Foo>`,
+which represents the concrete implementation of the Mage interface `magen::Foo`.
+The receiver itself does not handle messages sent by the remote, but rather it
+has a reference to a user-provided C++ object that implements the interface, and
+it forwards messages to it. Receivers are typically owned by the concrete
+implementation of the relevant interface.
 
 Here's an example:
 
@@ -99,12 +124,12 @@ class FooImpl final : public magen::Foo {
  public:
   Bind(mage::MessagePipe foo_receiver) {
     // Tell `receiver_` that `this` is the concrete implementation of
-    // `magen::Foo` that can handle IPCs.
+    // `magen::Foo` and its interface methods.
     receiver_.Bind(foo_receiver, this);
   }
 
-  // Implementation of magen::Foo. These methods get invoked by `receiver_` when
-  // it reads messages from its corresponding remote.
+  // Implementation of `magen::Foo`. These methods get invoked by `receiver_`
+  // when IPCs come in from the remote.
   void ArbitraryMessage(string) { /* ... */ }
   void AnotherIPC(MessagePipe) { /* ... */ }
 
@@ -118,10 +143,10 @@ class FooImpl final : public magen::Foo {
 ## Magen Interface Definition Language (IDL)
 
 Magen is the [IDL] that describes Mage interfaces. Interfaces are written in
-`.magen` files and are understood by the `magen_idl(...)` Bazel rule, which
-generates C++ bindings based on developer-supplied interfaces.
+`.magen` files by consumers of Mage, and are understood by the `magen_idl(...)`
+Bazel rule which generates C++ bindings for the interfaces.
 
-The magen IDL is quite simple (and much less feature-rich than Mojo's IDL). Each
+The Magen IDL is quite simple (and much less feature-rich than Mojo's IDL). Each
 `.magen` file describes a single interface with the `interface` keyword, which
 can have any number of methods described by their names and parameters.
 
@@ -161,12 +186,12 @@ interface ParentProcess {
 ```
 
 
-## Using Mage in an application
+## Using Mage in your application
 
 Using Mage to provide IPC support in an application is pretty simple; there are
 only a few steps:
 
- 1. Create your interface in a `.magen` file (previous section)
+ 1. Write your interface in a `.magen` file
  1. Build your `.magen` file
  1. Implement your interface in C++
  1. Use a `Remote` to send IPCs to your cross-process interface (or any thread)
@@ -188,11 +213,11 @@ my_project/
 ├─ WORKSPACE
 ```
 
-### 1. Write the Magen interface for the network process
+### 1. Write your interface in a `.magen` file
 
 The first thing you need to do is write the Magen interface that `main.cc` will
 use to send messages to the network process. This includes a `FetchURL` IPC that
-contains a URL. Magen interfaces are typically defined in a `magen/ directory`:
+contains a URL. Magen interfaces are typically defined in a `magen/` directory:
 
 ```cpp
 // network_process/magen/network_process.magen
@@ -202,7 +227,7 @@ interface NetworkProcess {
 }
 ```
 
-### 2. Build your `.magen`
+### 2. Build your `.magen` file
 
 Next, you need to tell your `BUILD` file about the interface in your `.magen`
 file, so it can "build" it (generate the requisite C++ code). `magen/`
@@ -253,8 +278,6 @@ course live in the `network_process.cc` binary, since that's where we'll accept
 URLs from the main process to fetch. We'll need to implement this interface now:
 
 ```cpp
-// network_process/network_process.cc
-
 #include "network_process/magen/network_process.magen.h" // Generated.
 
 // The network process's concrete implementation of the `magen::NetworkProcess`
@@ -272,8 +295,11 @@ class NetworkProcess final : public magen::NetworkProcess {
  private:
   mage::Receiver<magen::NetworkProcess> receiver_;
 };
+```
 
-// Network process binary.
+```cpp
+// network/network_process.cc
+
 int main() {
   // Accept the mage invitation from the process.
   mage::MessagePipe network_receiver = /* ... */;
@@ -298,7 +324,7 @@ The main application binary can communicate to the network process with a
 
 // Main binary that the user runs.
 int main() {
-  MessagePipe network_pipe = /* obtained from creating the network process */
+  mage::MessagePipe network_pipe = /* obtained from creating the network process */;
   mage::Remote<magen::NetworkProcess> remote(network_pipe);
 
   while (true) {
@@ -309,8 +335,7 @@ int main() {
 }
 ```
 
-
-## Sending `MessagePipes` cross-process
+### Sending `MessagePipes` cross-process
 
 The previous section illustrates sending a message over a bound message pipe to
 another process, using a single remote/receiver pair that spans the two
@@ -348,16 +373,14 @@ indefinitely expand the number of interfaces between them, by passing unbound
 `MessagePipe`s over an existing interface:
 
 ```cpp
-mage::Remote<magen::BoostrapInterface> remote = /* ... */;
+mage::Remote<magen::BoostrapInterface> bootstrap = /* ... */;
 
-// Create two entangled message pipes, and send one (for use as a receiver) to
-// the remote process.
+// Create two entangled message pipes: one for us, one for the remote process.
 std::vector<mage::MessagePipe> new_pipes = mage::CreateMessagePipes();
+bootstrap->SendCompositorReceiver(new_pipes[1]);
 
-remote->SendCompositorReceiver(new_pipes[1]);
 mage::Remote<magen::Compositor> compositor_remote(new_pipes[0]);
-
-// Now you can start invoking methods on the remote compositor, and they'll
+// Now we can start invoking methods on the remote compositor, and they'll
 // arrive in the remote process once the receiver gets bound.
 compositor_remote->StartCompositing();
 ```
@@ -433,6 +456,49 @@ int main(int argc, char** argv) {
 }
 ```
 
+## Threading & task scheduling dependencies
+
+Since Mage is multithreaded and inherently asynchronous, it has some threading
+and scheduling requirements. While Mage is in ["MVP" mode], it has a hard
+dependency on the external [`//base`] library that was originally developed
+alongside Mage. That means _right now_, in order to use Mage you have to use
+[`//base`] as your application's primary threading and scheduling library.
+
+**This is only temporary**: work is being done to decouple the two with the end
+goal of Mage being able to be embedded by any application that provides a
+sufficient implementation for these requirements. Some good implementations of
+these dependencies could be:
+ - [`//base`]
+ - [concurrencpp](https://github.com/David-Haim/concurrencpp/)
+ - Facebook's [libunifex](https://github.com/facebookexperimental/libunifex)
+ - Perhaps other libraries from: https://github.com/topics/asyncio?l=c%2B%2B
+
+Mage also requires of a task scheduling library, the ability to asynchronously
+listen to I/O from native platform sockets, such as Unix file descriptors or
+Windows HANDLEs. All of this is provided by default by [`//base`], which was
+developed with Mage in mind.
+
+## Platform support
+
+Since Mage is in ["MVP" mode], it only supports Linux and macOS at the time
+being. Windows support for Mage and the [`//base`] library are currently
+underway though.
+
+## Building and running the tests
+
+With the repository downloaded, you can run:
+
+```sh
+$ bazel test mage/mage_tests
+```
+
+To **run the demo**, do:
+
+```sh
+$ bazel build mage/demo/parent mage/demo/child
+$ ./bazel-bin/mage/demo/parent
+```
+
 
 ## Design limitations
 
@@ -460,5 +526,7 @@ via a Mage invitation.
 [IDL]: https://en.wikipedia.org/wiki/Interface_description_language
 [Mojo Core Ports Overview]: https://docs.google.com/document/d/1PaQEKfHi8pWifyiHRplnYeicjfjRuFJSMe3_zlJzhs8/edit
 [ipcz]: https://github.com/krockot/ipcz
+[public API]: mage/public
+["MVP" mode]: https://en.wikipedia.org/wiki/Minimum_viable_product
 [docs/security.md]: docs/security.md
 [docs/design_limitations.md]: docs/design_limitations.md
