@@ -64,6 +64,7 @@ internal messaging providers such as [ipcz], for example.
 - [Threading & task scheduling dependencies](#threading--task-scheduling-dependencies)
 - [Platform support](#platform-support)
 - [Building and running the tests](#building-and-running-the-tests)
+  - [Debugging](#debugging)
 - [Design limitations](#design-limitations)
 - [Security considerations](#security-considerations)
 
