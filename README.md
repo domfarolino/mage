@@ -17,7 +17,7 @@ library developed alongside Mage, although design work for separating the two
 entirely is being considered, to make Mage even more standalone. Mage is also
 built with [Bazel] but can be integrated with other toolchains.
 
-<details><summary>History</summary>
+<details><summary>History!</summary>
 
 The user-facing IDL portion of Mojo was based on Darin Fisher's [ipc_idl]
 prototype, which describes a very similar IDL that python generates C++ bindings
