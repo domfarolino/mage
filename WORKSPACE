@@ -8,7 +8,8 @@ http_archive(
   strip_prefix = "googletest-release-1.11.0",
 )
 
-# This is sketchy, we should make this better.
+# This is sketchy, we should factor the `//base` library into its own repository
+# and properly depend on a real version of it.
 git_repository(
   name = "base",
   commit = "ddd2ffb8dddb110be8a33c00fa579d4926b3cc5c",
