@@ -237,7 +237,7 @@ directories get their own `BUILD` files that invoke the Mage build process.
 ```starlark
 # network_process/magen/BUILD
 
-load("//mage/public/parser:magen_idl.bzl", "magen_idl")
+load("@mage//mage/public/parser:magen_idl.bzl", "magen_idl")
 
 # Generates `network_process.magen.h`, which can be included by depending on the
 # ":include" target below.
@@ -261,7 +261,7 @@ cc_binary(
     "main.cc",
   ],
 +  deps = [
-+    "//mage/public",
++    "@mage//mage/public",
 +    # Allows `main.cc` to `include` the generated interface header.
 +    "//network_process/magen:include",
 +  ],
