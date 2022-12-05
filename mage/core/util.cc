@@ -1,6 +1,6 @@
 #include <string>
 
-#include "mage/public/message.h"
+#include "mage/public/message.h"  // For `kIdentifierSize`.
 #include "mage/public/util.h"
 
 namespace mage {

@@ -1,5 +1,5 @@
-#ifndef MAGE_CORE_HANDLES_H_
-#define MAGE_CORE_HANDLES_H_
+#ifndef MAGE_PUBLIC_BINDINGS_MESSAGE_PIPE_H_
+#define MAGE_PUBLIC_BINDINGS_MESSAGE_PIPE_H_
 
 namespace mage {
 
@@ -11,4 +11,4 @@ static const MessagePipe kInvalidPipe = 0;
 
 };  // namespace mage
 
-#endif  // MAGE_CORE_HANDLES_H_
+#endif  // MAGE_PUBLIC_BINDINGS_MESSAGE_PIPE_H_

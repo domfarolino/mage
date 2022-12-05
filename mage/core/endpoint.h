@@ -10,7 +10,7 @@
 
 namespace base {
 class TaskRunner;
-}
+};  // namespace base
 
 namespace mage {
 

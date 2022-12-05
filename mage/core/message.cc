@@ -3,8 +3,6 @@
 #include <memory>
 #include <vector>
 
-#include "mage/core/endpoint.h"
-
 namespace mage {
 
 //////////////////// MESSAGE ////////////////////

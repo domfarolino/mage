@@ -479,6 +479,34 @@ to I/O from native platform sockets, such as Unix file descriptors or Windows
 HANDLEs. All of this is provided by default in [`//base`], which was developed
 with Mage in mind.
 
+Here's a complete list of threading/scheduling requirements/APIs an external
+application would have to satisfy to use Mage successfully:
+
+ - API to retrieve a thread-local reference to the current thread's task-posting
+   sink (that can be stored)
+    - Currently provided by `base::GetCurrentThreadTaskRunner()`
+    - Must support cross-thread task posting
+ - API to retrieve a reference to the task-posting sinks for other threads, from
+      any thread
+    - Currently provided by other handles in
+      `//base/scheduling/scheduling_handles`
+ - API to "Watch" and "Unwatch" a native socket, and get asynchronously notified
+   when data is available to read from it
+    - Currently provided by `base::TaskLoopForIO`, which has `(Un)Watch()`
+      methods that tell that underlying task loop which object to post a
+      notification message to when data is available to read on the relevant
+      socket
+ - API/Macro to tell what thread you're running on (UI or IO)
+    - Currently provided by `CHECK_ON_THREAD()` via
+      `//base/threading/thread_checker.h`
+ - API allowing an object to repeatedly determine if current execution is
+   happening on the thread the object was constructed on (this is slightly
+   different from the requirement immediately above)
+     - Currently provided by `base::ThreadChecker`
+     - Not a strict requirement — if the above is satisfied, we could re-write
+       `ThreadChecker` to just "save" the name of the constructor's thread for
+       later querying against the current thread
+
 ## Platform support
 
 Since Mage is in ["MVP" mode] right now, it only supports Linux and macOS.

@@ -1,12 +1,11 @@
-#ifndef MAGE_BINDINGS_RECEIVER_H_
-#define MAGE_BINDINGS_RECEIVER_H_
+#ifndef MAGE_PUBLIC_BINDINGS_RECEIVER_H_
+#define MAGE_PUBLIC_BINDINGS_RECEIVER_H_
 
 #include <memory>
 
 #include "base/scheduling/scheduling_handles.h"
 #include "base/threading/thread_checker.h"
 #include "mage/public/bindings/message_pipe.h"
-#include "mage/public/message.h"
 
 namespace mage {
 
@@ -50,4 +49,4 @@ class Receiver {
 
 };  // namespace mage
 
-#endif  // MAGE_BINDINGS_RECEIVER_H_
+#endif  // MAGE_PUBLIC_BINDINGS_RECEIVER_H_
