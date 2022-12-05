@@ -5,10 +5,13 @@
 #include <memory>
 
 #include "base/callback.h"
-#include "base/scheduling/scheduling_handles.h"
 #include "base/synchronization/mutex.h"
 #include "mage/public/bindings/message_pipe.h"
 #include "mage/public/message.h"
+
+namespace base {
+class TaskRunner;
+};  // namespace base
 
 namespace mage {
 

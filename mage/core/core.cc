@@ -3,7 +3,7 @@
 #include <unistd.h>
 #include <cstdlib>
 
-#include "base/scheduling/task_loop_for_io.h"
+#include "base/scheduling/scheduling_handles.h"
 #include "mage/core/endpoint.h"
 #include "mage/core/node.h"
 #include "mage/public/util.h"

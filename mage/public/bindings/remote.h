@@ -1,8 +1,7 @@
-#ifndef MAGE_BINDINGS_REMOTE_H_
-#define MAGE_BINDINGS_REMOTE_H_
+#ifndef MAGE_PUBLIC_BINDINGS_REMOTE_H_
+#define MAGE_PUBLIC_BINDINGS_REMOTE_H_
 
 #include "mage/public/bindings/message_pipe.h"
-#include "mage/public/message.h"
 
 namespace mage {
 
@@ -26,4 +25,4 @@ class Remote {
 
 };  // namespace mage
 
-#endif  // MAGE_BINDINGS_REMOTE_H_
+#endif  // MAGE_PUBLIC_BINDINGS_REMOTE_H_
