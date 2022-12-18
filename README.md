@@ -63,7 +63,6 @@ internal messaging providers such as [ipcz], for example.
   - [Sending `MessagePipes` cross-process](#sending-messagepipes-cross-process)
 - [Mage invitations](#mage-invitations)
 - [Threading & task scheduling](#threading--task-scheduling)
-- [Platform support](#platform-support)
 - [Building and running the tests](#building-and-running-the-tests)
   - [Debugging](#debugging)
 - [Design limitations](#design-limitations)
@@ -517,11 +516,6 @@ application would have to satisfy to use Mage successfully:
      - Not a strict requirement — if the above is satisfied, we could re-write
        `ThreadChecker` to just "save" the name of the constructor's thread for
        later querying against the current thread
-
-## Platform support
-
-Since Mage is in ["MVP" mode] right now, it only supports Linux and macOS.
-Windows support for Mage and the [`//base`] library are currently underway.
 
 ## Building and running the tests
 
