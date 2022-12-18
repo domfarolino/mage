@@ -50,6 +50,7 @@ internal messaging providers such as [ipcz], for example.
 
 ### Table of contents
 
+- [Supported platforms](#supported-platforms)
 - [Overview](#overview)
   - [`mage::Remote<T>`](#mageremotet)
   - [`mage::Receiver<T>`](#magereceivert)
@@ -69,6 +70,16 @@ internal messaging providers such as [ipcz], for example.
 - [Security considerations](#security-considerations)
 
 ----
+
+
+## Supported platforms
+
+![Linux](./assets/linux.svg)
+![macOS](./assets/apple.svg)
+
+In progress:
+
+![Windows](./assets/windows.svg)
 
 
 ## Overview
