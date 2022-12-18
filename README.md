@@ -77,7 +77,7 @@ internal messaging providers such as [ipcz], for example.
 ![Linux](./assets/linux.svg)
 ![macOS](./assets/apple.svg)
 
-In-progress:
+In progress:
 
 ![Windows](./assets/windows.svg)
 
