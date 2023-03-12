@@ -12,7 +12,6 @@ http_archive(
 # and properly depend on a real version of it.
 git_repository(
   name = "base",
-  commit = "b672f15a716ab22d538fb4d2f2c80923d0456982",
+  commit = "b1b83638f2ae966516cd92db71e229ad6ee92031",
   remote = "https://github.com/domfarolino/base.git",
-  shallow_since = "1671417080 -0500",
 )
