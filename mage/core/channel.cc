@@ -60,8 +60,7 @@ void PrintFullMessageContents(Message& message) {
 Channel::Channel(int fd, Delegate* delegate)
     : SocketReader(fd),
       delegate_(delegate),
-      io_task_loop_(*std::static_pointer_cast<base::TaskLoopForIO>(
-          base::GetIOThreadTaskLoop())) {
+      io_task_loop_(*base::GetIOThreadTaskLoop()) {
   CHECK_ON_THREAD(base::ThreadType::UI);
 }
 
