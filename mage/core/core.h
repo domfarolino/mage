@@ -71,6 +71,7 @@ class Core {
                                       std::shared_ptr<Endpoint> local_endpoint);
 
  private:
+  friend class CoreUnitTest;
   friend class MageTest;
 
   Core();

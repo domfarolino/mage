@@ -28,4 +28,7 @@ cc_library(
   ],
 )
 
-exports_files(["mage_test.cc"])
+exports_files([
+  "core_unittest.cc",
+  "mage_test.cc",
+])
