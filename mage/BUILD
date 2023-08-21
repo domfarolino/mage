@@ -27,6 +27,7 @@ config_setting(
 cc_test(
   name = "mage_tests",
   srcs = [
+    "//mage/core:core_unittest.cc",
     "//mage/core:mage_test.cc",
   ],
   copts = ["-Iexternal/gtest/include"],

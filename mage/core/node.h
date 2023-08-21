@@ -44,8 +44,9 @@ class Node : public Channel::Delegate {
   void OnReceivedAcceptInvitation(Message message);
   void OnReceivedUserMessage(Message message);
 
+  friend class CoreUnitTest;
+  FRIEND_TEST(CoreUnitTest, InitializeAndEntangleEndpointsUnitTest);
   friend class MageTest;
-  FRIEND_TEST(MageTest, InitializeAndEntangleEndpointsUnitTest);
 
   std::vector<std::pair<MessagePipe, std::shared_ptr<Endpoint>>>
   CreateMessagePipesAndGetEndpoints();
