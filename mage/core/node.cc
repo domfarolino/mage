@@ -12,7 +12,6 @@ namespace mage {
 
 std::pair<std::shared_ptr<Endpoint>, std::shared_ptr<Endpoint>>
 Node::InitializeAndEntangleEndpoints() const {
-  CHECK_ON_THREAD(base::ThreadType::UI);
   std::shared_ptr<Endpoint> ep1(
       new Endpoint(/*name=*/util::RandomIdentifier()));
   std::shared_ptr<Endpoint> ep2(
@@ -35,6 +34,7 @@ Node::InitializeAndEntangleEndpoints() const {
 }
 
 void Node::RegisterEndpoint(std::shared_ptr<Endpoint> new_endpoint) {
+  // TODO(domfarolino): Probably local `local_endpoints_` here.
   // Make sure the endpoint isn't already registered.
   auto it = local_endpoints_.find(new_endpoint->name);
   CHECK_EQ(it, local_endpoints_.end());
@@ -43,7 +43,6 @@ void Node::RegisterEndpoint(std::shared_ptr<Endpoint> new_endpoint) {
 }
 
 std::vector<MessagePipe> Node::CreateMessagePipes() {
-  CHECK_ON_THREAD(base::ThreadType::UI);
   std::vector<std::pair<MessagePipe, std::shared_ptr<Endpoint>>>
       pipes_and_endpoints = Node::CreateMessagePipesAndGetEndpoints();
   return {pipes_and_endpoints[0].first, pipes_and_endpoints[1].first};
@@ -51,12 +50,12 @@ std::vector<MessagePipe> Node::CreateMessagePipes() {
 
 std::vector<std::pair<MessagePipe, std::shared_ptr<Endpoint>>>
 Node::CreateMessagePipesAndGetEndpoints() {
-  CHECK_ON_THREAD(base::ThreadType::UI);
   const auto& [endpoint_1, endpoint_2] = InitializeAndEntangleEndpoints();
   MessagePipe handle_1 = Core::Get()->GetNextMessagePipe(),
               handle_2 = Core::Get()->GetNextMessagePipe();
   Core::Get()->RegisterLocalHandleAndEndpoint(handle_1, endpoint_1);
   Core::Get()->RegisterLocalHandleAndEndpoint(handle_2, endpoint_2);
+  // TODO(domfarolino): Probably lock `local_endpoints_` here.
   CHECK_NE(local_endpoints_.find(endpoint_1->name), local_endpoints_.end());
   CHECK_NE(local_endpoints_.find(endpoint_2->name), local_endpoints_.end());
   return {std::make_pair(handle_1, endpoint_1),
@@ -64,7 +63,6 @@ Node::CreateMessagePipesAndGetEndpoints() {
 }
 
 MessagePipe Node::SendInvitationAndGetMessagePipe(int fd) {
-  CHECK_ON_THREAD(base::ThreadType::UI);
   // This node wishes to invite another fresh peer node to the network of
   // processes. The sequence of events here looks like so:
   //   Endpoints:
@@ -108,9 +106,13 @@ MessagePipe Node::SendInvitationAndGetMessagePipe(int fd) {
 
   NodeName temporary_remote_node_name = util::RandomIdentifier();
 
+  // TODO(domfarolino): Probably lock `node_channel_map_` here, since another
+  // thread could be accessing this at the same time when sending a remote
+  // message.
   auto it = node_channel_map_.insert(
       {temporary_remote_node_name,
        std::make_unique<Channel>(fd, /*delegate=*/this)});
+  // TODO(domfarolino): Maybe lock this?
   pending_invitations_.insert({temporary_remote_node_name, remote_endpoint});
 
   // Similar to `AcceptInvitation()` below, only start the channel after it and

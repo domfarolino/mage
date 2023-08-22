@@ -207,6 +207,7 @@ MessagePipe Core::RecoverNewMessagePipeFromEndpointDescriptor(
 }
 
 MessagePipe Core::GetNextMessagePipe() {
+  // TODO(domfarolino): Probably lock `next_available_handle_` here.
   return next_available_handle_++;
 }
 
