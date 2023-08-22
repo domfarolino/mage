@@ -32,7 +32,6 @@ class Node : public Channel::Delegate {
   void AcceptInvitation(int fd);
   void SendMessage(std::shared_ptr<Endpoint> local_endpoint, Message message);
 
-  std::shared_ptr<Endpoint> GetEndpoint(std::string);
   void RegisterEndpoint(std::shared_ptr<Endpoint>);
 
   // Channel::Delegate implementation:

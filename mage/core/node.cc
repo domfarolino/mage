@@ -34,14 +34,6 @@ Node::InitializeAndEntangleEndpoints() const {
   return std::make_pair(ep1, ep2);
 }
 
-std::shared_ptr<Endpoint> Node::GetEndpoint(std::string endpoint_name) {
-  auto it = local_endpoints_.find(endpoint_name);
-  if (it == local_endpoints_.end())
-    return nullptr;
-
-  return it->second;
-}
-
 void Node::RegisterEndpoint(std::shared_ptr<Endpoint> new_endpoint) {
   // Make sure the endpoint isn't already registered.
   auto it = local_endpoints_.find(new_endpoint->name);

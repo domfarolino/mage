@@ -239,13 +239,6 @@ void Core::RegisterLocalHandleAndEndpoint(
     handle_table_lock_.unlock();
   }
 
-  // Next, we check that `local_endpoint` doesn't already exist in this node.
-  {
-    std::shared_ptr<Endpoint> null_endpoint =
-        node_->GetEndpoint(local_endpoint->name);
-    CHECK(!null_endpoint);
-  }
-
   // Finally, we can register the endpoint with `this` and `node_`.
   LOG("Core::RegisterLocalHandle registering local_handle (%d) and endpoint "
       "with name: %s",
