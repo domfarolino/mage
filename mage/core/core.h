@@ -95,9 +95,6 @@ class Core {
   // Used only by `this` for exclusive access to `handle_table_`.
   base::Mutex handle_table_lock_;
 
-  // A map of all known endpoint channels, by node name.
-  std::map<std::string, std::unique_ptr<Channel>> node_channel_map_;
-
   MessagePipe next_available_handle_ = 1;
 
   // This is optionally supplied when sending an invitation. It reports back
