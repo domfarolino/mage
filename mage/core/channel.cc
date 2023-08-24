@@ -74,12 +74,8 @@ void Channel::Start() {
   io_task_loop_.WatchSocket(this);
 }
 
-void Channel::SetRemoteNodeName(const std::string& name) {
-  CHECK_ON_THREAD(base::ThreadType::UI);
-  remote_node_name_ = name;
-}
-
 void Channel::SendInvitation(std::string inviter_name,
+                             std::string temporary_remote_node_name,
                              std::string intended_endpoint_peer_name) {
   CHECK_ON_THREAD(base::ThreadType::UI);
   Message message(MessageType::SEND_INVITATION);
@@ -91,8 +87,8 @@ void Channel::SendInvitation(std::string inviter_name,
          inviter_name.size());
 
   // Serialize temporary remote node name.
-  memcpy(params.data()->temporary_remote_node_name, remote_node_name_.c_str(),
-         remote_node_name_.size());
+  memcpy(params.data()->temporary_remote_node_name,
+         temporary_remote_node_name.c_str(), temporary_remote_node_name.size());
 
   // Serialize intended endpoint peer name.
   memcpy(params.data()->intended_endpoint_peer_name,

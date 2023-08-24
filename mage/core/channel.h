@@ -25,6 +25,7 @@ class Channel : public base::TaskLoopForIO::SocketReader {
   void Start();
   void SetRemoteNodeName(const std::string& name);
   void SendInvitation(std::string inviter_name,
+                      std::string temporary_remote_node_name,
                       std::string intended_endpoint_peer_name);
   void SendAcceptInvitation(std::string temporary_remote_node_name,
                             std::string actual_node_name,
@@ -35,10 +36,6 @@ class Channel : public base::TaskLoopForIO::SocketReader {
   void OnCanReadFromSocket() override;
 
  private:
-  // This is always initialized as something temporary until we hear back from
-  // the remote node and it tells us its name.
-  std::string remote_node_name_;
-
   // The |Delegate| owns |this|, so this pointer will never be null.
   Delegate* delegate_;
 

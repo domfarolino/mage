@@ -123,8 +123,8 @@ MessagePipe Node::SendInvitationAndGetMessagePipe(int fd) {
   // expensive, and we can avoid it with one-time proper ordering.
   std::unique_ptr<Channel>& channel = it.first->second;
   channel->Start();
-  channel->SetRemoteNodeName(temporary_remote_node_name);
   channel->SendInvitation(/*inviter_name=*/name_,
+                          /*temporary_remote_node_name=*/temporary_remote_node_name,
                           /*intended_endpoint_peer_name=*/
                           remote_endpoint->peer_address.endpoint_name);
 
