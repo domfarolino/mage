@@ -31,6 +31,7 @@ class Core {
   static void ShutdownCleanly();
 
   static Core* Get();
+  // Thread-safe.
   static std::vector<MessagePipe> CreateMessagePipes();
   static MessagePipe SendInvitationAndGetMessagePipe(
       int fd,
@@ -64,9 +65,12 @@ class Core {
   static MessagePipe RecoverNewMessagePipeFromEndpointDescriptor(
       const EndpointDescriptor& endpoint_descriptor);
 
+  // Thread-safe.
   MessagePipe GetNextMessagePipe();
+
   void OnReceivedAcceptInvitation();
   void OnReceivedInvitation(std::shared_ptr<Endpoint> local_endpoint);
+  // Thread-safe.
   void RegisterLocalHandleAndEndpoint(MessagePipe local_handle,
                                       std::shared_ptr<Endpoint> local_endpoint);
 

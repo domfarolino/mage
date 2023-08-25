@@ -27,11 +27,14 @@ class Node : public Channel::Delegate {
   }
   ~Node() = default;
 
+  // Thread-safe.
   std::vector<MessagePipe> CreateMessagePipes();
+
   MessagePipe SendInvitationAndGetMessagePipe(int fd);
   void AcceptInvitation(int fd);
   void SendMessage(std::shared_ptr<Endpoint> local_endpoint, Message message);
 
+  // Thread-safe.
   void RegisterEndpoint(std::shared_ptr<Endpoint>);
 
   // Channel::Delegate implementation:
