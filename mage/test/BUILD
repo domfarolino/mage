@@ -120,3 +120,15 @@ cc_binary(
   ],
   visibility = ["//visibility:public"],
 )
+cc_binary(
+  name = "child_threads_send_racy_ipcs",
+  srcs = [
+    "child_threads_send_racy_ipcs.cc",
+  ],
+  deps = [
+    "@base//base",
+    "//mage/public",
+    "//mage/test/magen:include",
+  ],
+  visibility = ["//visibility:public"],
+)

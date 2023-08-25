@@ -94,7 +94,7 @@ class CallbackInterfaceImpl: public magen::CallbackInterface {
     receiver_.Bind(message_pipe, this);
   }
 
-  void NotifyDone() {
+  void NotifyDone() override {
     quit_closure_();
   }
 
@@ -137,6 +137,8 @@ static const char kChildSendsTwoPipesToParent[] =
     RESOLVE_BINARY_PATH(mage/test/child_sends_two_pipes_to_parent);
 static const char kPassPipeBackAndForth[] =
     RESOLVE_BINARY_PATH(mage/test/pass_pipe_back_and_forth);
+static const char kChildThreadsSendRacyIPCs[] =
+    RESOLVE_BINARY_PATH(mage/test/child_threads_send_racy_ipcs);
 
 class ProcessLauncher {
  public:
@@ -1638,6 +1640,119 @@ TEST_P(MageTest, SendHandleToBoundEndpoint) {
 
   // The loop will be quit once the callback receives a message.
   main_thread->Run();
+}
+
+// This interface is for the two tests directly following, which test two
+// scenarios:
+//   1. An arbitrary number of threads all racing to sending messages to their
+//      corresponding receivers all bound to the same object (all receivers
+//      bound on the main thread).
+//   2. A remote process doing the same as the above — spinning up an
+//      arbitrary number of threads and sending IPCs to the parent process's
+//      corresponding receivers.
+// The final assertion logic in the parent process is the same in both cases,
+// but we test both paths because the same-process vs. cross-process
+// implementation paths are very different, each requiring different
+// implementation details to remain thread-safe.
+class CallbackInterfaceCounter: public magen::CallbackInterface {
+ public:
+  CallbackInterfaceCounter(base::OnceClosure quit_closure) : quit_closure_(std::move(quit_closure)) {}
+
+  void AddReceiver(mage::MessagePipe receiver_pipe) {
+    mage::Receiver<magen::CallbackInterface> new_receiver;
+    new_receiver.Bind(receiver_pipe, this);
+    receiver_set_.push_back(std::move(new_receiver));
+  }
+
+  void NotifyDone() override {
+    if (++num_notifications == 999) {
+      quit_closure_();
+    }
+  }
+
+  int num_notifications = 0;
+
+ private:
+  std::vector<mage::Receiver<magen::CallbackInterface>> receiver_set_;
+  base::OnceClosure quit_closure_;
+};
+TEST_P(MageTest, MultiThreadRacyMessageSendingFromSameProcess) {
+  const int kNumThreads = 10;
+  const int kNumMessagesEachThread = 100;
+
+  CallbackInterfaceCounter counter(main_thread->QuitClosure());
+
+  std::vector<std::vector<mage::MessagePipe>> pipes;
+  for (int i = 0; i < kNumThreads; ++i) {
+    pipes.push_back(mage::Core::CreateMessagePipes());
+    counter.AddReceiver(pipes[i][1]);
+  }
+
+  std::vector<std::unique_ptr<base::Thread>> threads;
+  for (int i = 0; i < kNumThreads; ++i) {
+    threads.push_back(std::make_unique<base::Thread>(base::ThreadType::WORKER));
+    threads[i]->Start();
+    threads[i]->GetTaskRunner()->PostTask([&pipes, i](){
+      mage::Remote<magen::CallbackInterface> callback_remote;
+      callback_remote.Bind(pipes[i][0]);
+
+      // Invoke `NotifyDone()` on the callback (that lives on the main thread)
+      // `kNumMessagesEachThread` times.
+      for (int j = 0; j < kNumMessagesEachThread; ++j) {
+        callback_remote->NotifyDone();
+      }
+    });
+  }
+
+  // This will quit successfully *iff* `CallbackInterfaceCounter` receives all
+  // 1000 expected messages.
+  main_thread->Run();
+  ASSERT_EQ(counter.num_notifications, 999);
+}
+
+TEST_P(MageTest, MultiThreadRacyMessageSendingFromRemoteProcess) {
+  launcher->Launch(kChildThreadsSendRacyIPCs);
+  const int kNumThreads = 10;
+  const int kNumMessagesEachThread = 100;
+
+  MessagePipe message_pipe =
+    mage::Core::SendInvitationAndGetMessagePipe(
+      launcher->GetLocalFd()
+    );
+
+  mage::Remote<magen::HandleAccepter> remote_handle_accepter;
+  remote_handle_accepter.Bind(message_pipe);
+
+  // Continnue....
+  CallbackInterfaceCounter counter(main_thread->QuitClosure());
+
+  std::vector<std::vector<mage::MessagePipe>> pipes;
+  for (int i = 0; i < kNumThreads; ++i) {
+    pipes.push_back(mage::Core::CreateMessagePipes());
+    counter.AddReceiver(pipes[i][1]);
+  }
+
+  // TODO(domfarolino): Much of this has to be rewritten and moved cross-process. Create the new binary, prepare the launcher, etc.
+  std::vector<std::unique_ptr<base::Thread>> threads;
+  for (int i = 0; i < kNumThreads; ++i) {
+    threads.push_back(std::make_unique<base::Thread>(base::ThreadType::WORKER));
+    threads[i]->Start();
+    threads[i]->GetTaskRunner()->PostTask([&pipes, i](){
+      mage::Remote<magen::CallbackInterface> callback_remote;
+      callback_remote.Bind(pipes[i][0]);
+
+      // Invoke `NotifyDone()` on the callback (that lives on the main thread)
+      // `kNumMessagesEachThread` times.
+      for (int j = 0; j < kNumMessagesEachThread; ++j) {
+        callback_remote->NotifyDone();
+      }
+    });
+  }
+
+  // This will quit successfully *iff* `CallbackInterfaceCounter` receives all
+  // 1000 expected messages.
+  main_thread->Run();
+  ASSERT_EQ(counter.num_notifications, 999);
 }
 
 }; // namespace mage

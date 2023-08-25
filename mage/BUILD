@@ -13,6 +13,7 @@ filegroup(
     "//mage/test:child_sends_send_invitation_pipe_to_parent",
     "//mage/test:child_sends_two_pipes_to_parent",
     "//mage/test:pass_pipe_back_and_forth",
+    "//mage/test:child_threads_send_racy_ipcs",
   ],
 )
 
