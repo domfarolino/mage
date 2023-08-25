@@ -27,11 +27,14 @@ class Node : public Channel::Delegate {
   }
   ~Node() = default;
 
+  // Thread-safe.
   std::vector<MessagePipe> CreateMessagePipes();
+
   MessagePipe SendInvitationAndGetMessagePipe(int fd);
   void AcceptInvitation(int fd);
   void SendMessage(std::shared_ptr<Endpoint> local_endpoint, Message message);
 
+  // Thread-safe.
   void RegisterEndpoint(std::shared_ptr<Endpoint>);
 
   // Channel::Delegate implementation:
@@ -68,6 +71,9 @@ class Node : public Channel::Delegate {
   // All endpoints that are local to this node, that is, whose address's
   // "node name" is our |name_|.
   std::map<EndpointName, std::shared_ptr<Endpoint>> local_endpoints_;
+  // This is used to synchronized access to `local_endpoints_` above, since it
+  // can be accessed from multiple threads.
+  base::Mutex local_endpoints_lock_;
 
   // Used when we send a message from a (necessarily, local) endpoint in order
   // to find the channel associated with its peer endpoint. Without this, we

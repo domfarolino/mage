@@ -39,10 +39,12 @@ Core* Core::Get() {
 // static
 std::vector<MessagePipe> Core::CreateMessagePipes() {
   std::vector<MessagePipe> return_handles = Get()->node_->CreateMessagePipes();
+  Get()->handle_table_lock_.lock();
   CHECK_NE(Get()->handle_table_.find(return_handles[0]),
            Get()->handle_table_.end());
   CHECK_NE(Get()->handle_table_.find(return_handles[1]),
            Get()->handle_table_.end());
+  Get()->handle_table_lock_.unlock();
   return return_handles;
 }
 
@@ -207,7 +209,10 @@ MessagePipe Core::RecoverNewMessagePipeFromEndpointDescriptor(
 }
 
 MessagePipe Core::GetNextMessagePipe() {
-  return next_available_handle_++;
+  next_available_handle_lock_.lock();
+  int return_handle = next_available_handle_++;
+  next_available_handle_lock_.unlock();
+  return return_handle;
 }
 
 void Core::OnReceivedAcceptInvitation() {

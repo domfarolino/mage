@@ -94,7 +94,7 @@ class CallbackInterfaceImpl: public magen::CallbackInterface {
     receiver_.Bind(message_pipe, this);
   }
 
-  void NotifyDone() {
+  void NotifyDone() override {
     quit_closure_();
   }
 
@@ -137,6 +137,8 @@ static const char kChildSendsTwoPipesToParent[] =
     RESOLVE_BINARY_PATH(mage/test/child_sends_two_pipes_to_parent);
 static const char kPassPipeBackAndForth[] =
     RESOLVE_BINARY_PATH(mage/test/pass_pipe_back_and_forth);
+static const char kChildThreadsSendRacyIPCs[] =
+    RESOLVE_BINARY_PATH(mage/test/child_threads_send_racy_ipcs);
 
 class ProcessLauncher {
  public:
@@ -151,6 +153,18 @@ class ProcessLauncher {
     if (child_pid_ != 0) {
       EXPECT_EQ(kill(child_pid_, SIGKILL), 0);
     }
+  }
+
+  void RequestBlockingSockets() {
+    // Shut down the original sockets.
+    EXPECT_EQ(close(fds_[0]), 0);
+    EXPECT_EQ(close(fds_[1]), 0);
+    EXPECT_EQ(child_pid_, 0);
+
+    // Create *blocking* sockets for the new process.
+    EXPECT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds_), 0);
+    EXPECT_EQ(fcntl(fds_[0], F_SETFL), 0);
+    EXPECT_EQ(fcntl(fds_[1], F_SETFL), 0);
   }
 
   void Launch(const char child_binary[]) {
@@ -186,20 +200,47 @@ class ProcessLauncher {
 
 }; // namespace
 
-class MageTest : public testing::Test {
+enum class MainThreadType {
+  kUIThread,
+  kIOThread,
+};
+
+class MageTest : public testing::TestWithParam<MainThreadType> {
  public:
   MageTest(): io_thread(base::ThreadType::IO) {}
 
+  // Provides meaningful param names instead of /0 and /1 etc.
+  static std::string DescribeParams(
+      const ::testing::TestParamInfo<ParamType>& info) {
+    switch (info.param) {
+      case MainThreadType::kUIThread:
+        return "MainThreadUI";
+      case MainThreadType::kIOThread:
+        return "MainThreadIO";
+      default:
+        NOTREACHED();
+    }
+
+    NOTREACHED();
+    return "NOTREACHED";
+  }
+
   void SetUp() override {
     launcher = std::unique_ptr<ProcessLauncher>(new ProcessLauncher());
-    main_thread = base::TaskLoop::Create(base::ThreadType::UI);
-    io_thread.Start();
-    // Mage relies on `base::GetIOThreadTaskLoop()` being synchronously
-    // available from the UI thread upon start up, which only happens after the
-    // IO thread has actually started, which we can know by only continuing once
-    // we've confirmed it is running tasks.
-    io_thread.GetTaskRunner()->PostTask(main_thread->QuitClosure());
-    main_thread->Run();
+
+    if (GetParam() == MainThreadType::kUIThread) {
+      main_thread = base::TaskLoop::Create(base::ThreadType::UI);
+      io_thread.Start();
+      // Mage relies on `base::GetIOThreadTaskLoop()` being synchronously
+      // available from the UI thread upon start up, which only happens after the
+      // IO thread has actually started, which we can know by only continuing once
+      // we've confirmed it is running tasks.
+      io_thread.GetTaskRunner()->PostTask(main_thread->QuitClosure());
+      main_thread->Run();
+    } else {
+      CHECK_EQ(GetParam(), MainThreadType::kIOThread);
+      main_thread = base::TaskLoop::Create(base::ThreadType::IO);
+    }
 
     mage::Core::Init();
     EXPECT_TRUE(mage::Core::Get());
@@ -210,6 +251,14 @@ class MageTest : public testing::Test {
     io_thread.StopWhenIdle(); // Blocks.
     main_thread.reset();
     launcher.reset();
+  }
+
+  void CheckThread() {
+    if (GetParam() == MainThreadType::kUIThread) {
+      CHECK_ON_THREAD(base::ThreadType::UI);
+    } else {
+      CHECK_ON_THREAD(base::ThreadType::IO);
+    }
   }
 
  protected:
@@ -230,8 +279,13 @@ class MageTest : public testing::Test {
   base::Thread io_thread;
 };
 
+INSTANTIATE_TEST_SUITE_P(All,
+                         MageTest,
+                         testing::Values(MainThreadType::kUIThread, MainThreadType::kIOThread),
+                         &MageTest::DescribeParams);
+
 // In this test, the parent process is the inviter and a mage::Receiver.
-TEST_F(MageTest, ParentIsInviterAndReceiver) {
+TEST_P(MageTest, ParentIsInviterAndReceiver) {
   launcher->Launch(kChildAcceptorAndRemote);
 
   MessagePipe message_pipe =
@@ -253,7 +307,7 @@ TEST_F(MageTest, ParentIsInviterAndReceiver) {
 }
 
 // In this test, the parent process is the invitee and a mage::Receiver.
-TEST_F(MageTest, ParentIsAcceptorAndReceiver) {
+TEST_P(MageTest, ParentIsAcceptorAndReceiver) {
   launcher->Launch(kChildInviterAndRemote);
 
   mage::Core::AcceptInvitation(launcher->GetLocalFd(),
@@ -262,7 +316,7 @@ TEST_F(MageTest, ParentIsAcceptorAndReceiver) {
     EXPECT_EQ(CoreHandleTable().size(), 1);
     EXPECT_EQ(NodeLocalEndpoints().size(), 1);
 
-    CHECK_ON_THREAD(base::ThreadType::UI);
+    CheckThread();
     TestInterfaceImpl impl(message_pipe);
 
     // Let the message come in from the remote inviter.
@@ -297,7 +351,7 @@ TEST_F(MageTest, ParentIsAcceptorAndReceiver) {
 // depending on whether or not the mage::Remote is used before or after it
 // learns that we accepted the invitation. This should be completely opaque to
 // the user, which is why we have to test it.
-TEST_F(MageTest, ParentIsAcceptorAndReceiverButChildBlocksOnAcceptance) {
+TEST_P(MageTest, ParentIsAcceptorAndReceiverButChildBlocksOnAcceptance) {
   launcher->Launch(kInviterAsRemoteBlockOnAcceptance);
 
   mage::Core::AcceptInvitation(launcher->GetLocalFd(),
@@ -306,7 +360,7 @@ TEST_F(MageTest, ParentIsAcceptorAndReceiverButChildBlocksOnAcceptance) {
     EXPECT_EQ(CoreHandleTable().size(), 1);
     EXPECT_EQ(NodeLocalEndpoints().size(), 1);
 
-    CHECK_ON_THREAD(base::ThreadType::UI);
+    CheckThread();
     TestInterfaceImpl impl(message_pipe);
 
     // Let the message come in from the remote inviter.
@@ -372,7 +426,7 @@ TEST_F(MageTest, ParentIsAcceptorAndReceiverButChildBlocksOnAcceptance) {
 //   3.) Send invitation (pipe used for FirstInterface)
 //   4.) Send one of SecondInterface's handles to other process via
 //       FirstInterface and assert everything was received
-TEST_F(MageTest, SendHandleAndQueuedMessageOverInitialPipe_01) {
+TEST_P(MageTest, SendHandleAndQueuedMessageOverInitialPipe_01) {
   launcher->Launch(kChildReceiveHandle);
 
   // 1.) Send invitation (pipe used for FirstInterface)
@@ -424,7 +478,7 @@ TEST_F(MageTest, SendHandleAndQueuedMessageOverInitialPipe_01) {
   second_remote->NotifyDoneViaCallback();
   main_thread->Run();
 }
-TEST_F(MageTest, SendHandleAndQueuedMessageOverInitialPipe_02) {
+TEST_P(MageTest, SendHandleAndQueuedMessageOverInitialPipe_02) {
   launcher->Launch(kChildReceiveHandle);
 
   // 1.) Send invitation (pipe used for FirstInterface)
@@ -473,7 +527,7 @@ TEST_F(MageTest, SendHandleAndQueuedMessageOverInitialPipe_02) {
   second_remote->NotifyDoneViaCallback();
   main_thread->Run();
 }
-TEST_F(MageTest, SendHandleAndQueuedMessageOverInitialPipe_05) {
+TEST_P(MageTest, SendHandleAndQueuedMessageOverInitialPipe_05) {
   launcher->Launch(kChildReceiveHandle);
 
   // 1.) Create message pipes for SecondInterface and callback
@@ -532,7 +586,7 @@ TEST_F(MageTest, SendHandleAndQueuedMessageOverInitialPipe_05) {
 // queueing differently depending on whether messages were queued on the
 // invitation pipe or a generic pipe made arbitrarily later. This test shows
 // that the two paths have been unified.
-TEST_F(MageTest, SendHandleAndQueuedMessageOverArbitraryPipe) {
+TEST_P(MageTest, SendHandleAndQueuedMessageOverArbitraryPipe) {
   launcher->Launch(kChildReceiveHandle);
 
   // 1.) Send invitation (pipe used for FirstInterface)
@@ -639,7 +693,7 @@ class SecondInterfaceImplDummy1 final : public magen::SecondInterface {
 // endpoints with local peers (that might be proxying). This test asserts that
 // we do the same thing but when sending an endpoint-bearing message to a local
 // endpoint whose peer is remote.
-TEST_F(MageTest, SendInvitationAndReceiveQueuedEndpointsFromAcceptor) {
+TEST_P(MageTest, SendInvitationAndReceiveQueuedEndpointsFromAcceptor) {
   launcher->Launch(kChildSendMessageWithQueuedHandle);
 
   // 1.) Send invitation (pipe used for FirstInterface)
@@ -679,7 +733,7 @@ class FirstInterfaceImplDummy final : public magen::FirstInterface {
 };
 // This test shows that when a node receives a message with a single handle, we
 // register one backing endpoint with `Core`.
-TEST_F(MageTest, ReceiveHandleFromRemoteNode) {
+TEST_P(MageTest, ReceiveHandleFromRemoteNode) {
   launcher->Launch(kParentReceiveHandle);
 
   MessagePipe invitation_pipe =
@@ -741,7 +795,7 @@ class ChildPassInvitationPipeBackToParentMessagePiper :
 // message pipe it gets from accepting an invitation from its parent, and sends
 // it back to the parent (over a separate message pipe). Parent now has a
 // remote/receiver and should be fully functional.
-TEST_F(MageTest, ChildPassAcceptInvitationPipeBackToParent) {
+TEST_P(MageTest, ChildPassAcceptInvitationPipeBackToParent) {
   launcher->Launch(kChildSendsAcceptInvitationPipeToParent);
 
   MessagePipe invitation_pipe =
@@ -770,7 +824,7 @@ TEST_F(MageTest, ChildPassAcceptInvitationPipeBackToParent) {
 // message pipe it gets from sending an invitation to its parent, and sends
 // it back to the parent (over a separate message pipe). Parent now has a
 // remote/receiver and should be fully functional.
-TEST_F(MageTest, ChildPassSendInvitationPipeBackToParent) {
+TEST_P(MageTest, ChildPassSendInvitationPipeBackToParent) {
   launcher->Launch(kChildSendsSendInvitationPipeToParent);
 
   mage::Core::AcceptInvitation(launcher->GetLocalFd(),
@@ -857,7 +911,7 @@ class ChildPassTwoPipesToParent : public magen::FirstInterface,
 // in the child process should be marked as proxying to each other. When the
 // parent receives both pipes, it binds them to a remote/receiver pair and uses
 // the remote to send a message that should end up on the same-process receiver.
-TEST_F(MageTest, ChildPassRemoteAndReceiverToParent) {
+TEST_P(MageTest, ChildPassRemoteAndReceiverToParent) {
   launcher->Launch(kChildSendsTwoPipesToParent);
 
   MessagePipe invitation_pipe =
@@ -893,7 +947,7 @@ TEST_F(MageTest, ChildPassRemoteAndReceiverToParent) {
 // `target_endpoint` of the message it receives and forwards, but also has to
 // set each endpoint that it received and processed into the proxying state as
 // well.
-TEST_F(MageTest, ChildPassRemoteAndReceiverToParentToSendEndpointBaringMessageOver) {
+TEST_P(MageTest, ChildPassRemoteAndReceiverToParentToSendEndpointBaringMessageOver) {
   launcher->Launch(kChildSendsTwoPipesToParent);
 
   MessagePipe invitation_pipe =
@@ -1014,7 +1068,7 @@ class HandleAccepterImpl2 : public magen::HandleAccepter, public magen::Callback
 //   the same endpoint over and over again with unique cross-node endpoint name.
 //
 // See the next test for even more complicated logic being exercised.
-TEST_F(MageTest, PassHandleBackAndForthBetweenProcesses) {
+TEST_P(MageTest, PassHandleBackAndForthBetweenProcesses) {
   launcher->Launch(kPassPipeBackAndForth);
 
   MessagePipe invitation_pipe =
@@ -1154,7 +1208,7 @@ class HandleAccepterImpl3 : public magen::HandleAccepter, public magen::Callback
 //   1.) Automatic proxying of user messages that contain endpoints. This is
 //   mostly the logic that exists in `PrepareToForwardUserMessage()`. See the
 //   documentation for why it is complicated.
-TEST_F(MageTest, PassEndpointBearingHandleBackAndForthBetweenProcesses) {
+TEST_P(MageTest, PassEndpointBearingHandleBackAndForthBetweenProcesses) {
   launcher->Launch(kPassPipeBackAndForth);
 
   MessagePipe invitation_pipe =
@@ -1180,7 +1234,7 @@ TEST_F(MageTest, PassEndpointBearingHandleBackAndForthBetweenProcesses) {
 
 
 /////////////////////////////// IN-PROCESS TESTS ///////////////////////////////
-TEST_F(MageTest, InProcessQueuedMessagesAfterReceiverBound) {
+TEST_P(MageTest, InProcessQueuedMessagesAfterReceiverBound) {
   std::vector<MessagePipe> mage_handles = mage::Core::CreateMessagePipes();
   EXPECT_EQ(mage_handles.size(), 2);
 
@@ -1221,7 +1275,7 @@ TEST_F(MageTest, InProcessQueuedMessagesAfterReceiverBound) {
   EXPECT_EQ(impl.received_amount, 5000);
   EXPECT_EQ(impl.received_currency, "USD");
 }
-TEST_F(MageTest, InProcessQueuedMessagesBeforeReceiverBound) {
+TEST_P(MageTest, InProcessQueuedMessagesBeforeReceiverBound) {
   std::vector<MessagePipe> mage_handles = mage::Core::CreateMessagePipes();
   EXPECT_EQ(mage_handles.size(), 2);
 
@@ -1326,7 +1380,7 @@ class FirstInterfaceImpl final : public magen::FirstInterface {
 //  1.) FirstInterface (carry SecondInterface)
 //  2.) FirstInterface
 //  3.) SecondInterface
-TEST_F(MageTest, OrderingNotPreservedBetweenPipes_SendBeforeReceiverBound) {
+TEST_P(MageTest, OrderingNotPreservedBetweenPipes_SendBeforeReceiverBound) {
   std::vector<MessagePipe> first_interface_handles = mage::Core::CreateMessagePipes();
   MessagePipe first_remote_handle = first_interface_handles[0],
              first_receiver_handle = first_interface_handles[1];
@@ -1374,7 +1428,7 @@ TEST_F(MageTest, OrderingNotPreservedBetweenPipes_SendBeforeReceiverBound) {
   EXPECT_TRUE(first_impl.send_string_called);
   EXPECT_TRUE(second_impl.send_string_and_notify_done_called);
 }
-TEST_F(MageTest, OrderingNotPreservedBetweenPipes_SendAfterReceiverBound) {
+TEST_P(MageTest, OrderingNotPreservedBetweenPipes_SendAfterReceiverBound) {
   std::vector<MessagePipe> first_interface_handles = mage::Core::CreateMessagePipes();
   MessagePipe first_remote_handle = first_interface_handles[0],
              first_receiver_handle = first_interface_handles[1];
@@ -1429,7 +1483,7 @@ TEST_F(MageTest, OrderingNotPreservedBetweenPipes_SendAfterReceiverBound) {
 // Another test to show that the ordering between two pipes cannot be relied
 // upon. We demonstrate this by just having two interfaces and binding their
 // receivers in the opposite order from which messages were sent over them.
-TEST_F(MageTest, OrderingNotPreservedBetweenPipes_Simple) {
+TEST_P(MageTest, OrderingNotPreservedBetweenPipes_Simple) {
   std::vector<MessagePipe> first_interface_handles = mage::Core::CreateMessagePipes();
   MessagePipe first_remote_handle = first_interface_handles[0],
              first_receiver_handle = first_interface_handles[1];
@@ -1494,7 +1548,7 @@ class TestInterfaceOnWorkerThread : public magen::TestInterface {
   base::ThreadChecker thread_checker_;
 };
 
-TEST_F(MageTest, InProcessCrossThread) {
+TEST_P(MageTest, InProcessCrossThread) {
   base::Thread worker_thread(base::ThreadType::WORKER);
   worker_thread.Start();
 
@@ -1513,7 +1567,7 @@ TEST_F(MageTest, InProcessCrossThread) {
   worker_thread.GetTaskRunner()->PostTask([&](){
     impl = std::make_unique<TestInterfaceOnWorkerThread>(
         remote_handle,
-        std::bind(&base::TaskLoop::Quit, base::GetUIThreadTaskLoop().get()));
+        std::bind(&base::TaskLoop::Quit, main_thread));
   });
 
   // Run the main loop until we quit as a result of the last message being
@@ -1528,7 +1582,7 @@ TEST_F(MageTest, InProcessCrossThread) {
   EXPECT_TRUE(impl->has_called_send_money);
 }
 
-TEST_F(MageTest, SendMessageToDeletedReceiver) {
+TEST_P(MageTest, SendMessageToDeletedReceiver) {
   std::vector<MessagePipe> mage_handles = mage::Core::CreateMessagePipes();
   EXPECT_EQ(mage_handles.size(), 2);
 
@@ -1576,7 +1630,7 @@ class HandleAccepterImpl : public magen::HandleAccepter {
   mage::Receiver<magen::HandleAccepter> receiver_;
   std::unique_ptr<CallbackInterfaceImpl> callback_impl_;
 };
-TEST_F(MageTest, SendHandleToBoundEndpoint) {
+TEST_P(MageTest, SendHandleToBoundEndpoint) {
   std::vector<MessagePipe> mage_handles = mage::Core::CreateMessagePipes();
   EXPECT_EQ(mage_handles.size(), 2);
 
@@ -1597,6 +1651,110 @@ TEST_F(MageTest, SendHandleToBoundEndpoint) {
   callback_remote->NotifyDone();
 
   // The loop will be quit once the callback receives a message.
+  main_thread->Run();
+}
+
+// This interface is for the two tests directly following, which test two
+// scenarios:
+//   1. An arbitrary number of threads all racing to sending messages to their
+//      corresponding receivers all bound to the same object (all receivers
+//      bound on the main thread).
+//   2. A remote process doing the same as the above — spinning up an
+//      arbitrary number of threads and sending IPCs to the parent process's
+//      corresponding receivers.
+// The final assertion logic in the parent process is the same in both cases,
+// but we test both paths because the same-process vs. cross-process
+// implementation paths are very different, each requiring different
+// implementation details to remain thread-safe.
+class CallbackInterfaceCounter: public magen::CallbackInterface {
+ public:
+  CallbackInterfaceCounter(int limit, base::OnceClosure quit_closure) :
+      message_limit_(limit), quit_closure_(std::move(quit_closure)) {}
+
+  void AddReceiver(mage::MessagePipe receiver_pipe) {
+    mage::Receiver<magen::CallbackInterface> new_receiver;
+    new_receiver.Bind(receiver_pipe, this);
+    receiver_set_.push_back(std::move(new_receiver));
+  }
+
+  void NotifyDone() override {
+    if (++num_messages_so_far_ == message_limit_) {
+      quit_closure_();
+    }
+  }
+
+ private:
+  std::vector<mage::Receiver<magen::CallbackInterface>> receiver_set_;
+  // How many messages we're supposed to get ultimately.
+  int message_limit_;
+  // How many messages we've gotten so far.
+  int num_messages_so_far_ = 0;
+  // The quit closure to call once `num_messages_so_far_` == `message_limit_`.
+  base::OnceClosure quit_closure_;
+};
+TEST_P(MageTest, MultiThreadRacyMessageSendingFromSameProcess) {
+  const int kNumThreads = 10;
+  const int kNumMessagesEachThread = 100;
+
+  CallbackInterfaceCounter counter(kNumThreads * kNumMessagesEachThread,
+      main_thread->QuitClosure());
+
+  std::vector<std::vector<mage::MessagePipe>> pipes;
+  for (int i = 0; i < kNumThreads; ++i) {
+    pipes.push_back(mage::Core::CreateMessagePipes());
+    counter.AddReceiver(pipes[i][1]);
+  }
+
+  std::vector<std::unique_ptr<base::Thread>> threads;
+  for (int i = 0; i < kNumThreads; ++i) {
+    threads.push_back(std::make_unique<base::Thread>(base::ThreadType::WORKER));
+    threads[i]->Start();
+    threads[i]->GetTaskRunner()->PostTask([&pipes, i](){
+      mage::Remote<magen::CallbackInterface> callback_remote;
+      callback_remote.Bind(pipes[i][0]);
+
+      // Invoke `NotifyDone()` on the callback (that lives on the main thread)
+      // `kNumMessagesEachThread` times.
+      for (int j = 0; j < kNumMessagesEachThread; ++j) {
+        callback_remote->NotifyDone();
+      }
+    });
+  }
+
+  main_thread->Run();
+}
+
+TEST_P(MageTest, MultiThreadRacyMessageSendingFromRemoteProcess) {
+  // Needed for the sheer amount of IPCs this test sends.
+  launcher->RequestBlockingSockets();
+  launcher->Launch(kChildThreadsSendRacyIPCs);
+
+  // This is the number of threads that the remote process will set up. We
+  // create a MessagePipe pair for each thread to send `counter` a message on,
+  // below.
+  //
+  // These constants need to be kept in-sync with those in
+  // `child_thread_sends_racy_ipcs_.cc`.
+  const int kNumThreads = 10;
+  const int kNumMessagesEachThread = 100;
+
+  MessagePipe message_pipe =
+    mage::Core::SendInvitationAndGetMessagePipe(
+      launcher->GetLocalFd()
+    );
+
+  mage::Remote<magen::HandleAccepter> remote_handle_accepter;
+  remote_handle_accepter.Bind(message_pipe);
+
+  CallbackInterfaceCounter counter(kNumThreads * kNumMessagesEachThread,
+      main_thread->QuitClosure());
+
+  for (int i = 0; i < kNumThreads; ++i) {
+    std::vector<mage::MessagePipe> pipes = mage::Core::CreateMessagePipes();
+    counter.AddReceiver(pipes[1]);
+    remote_handle_accepter->PassHandle(pipes[0]);
+  }
+
   main_thread->Run();
 }
 

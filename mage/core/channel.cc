@@ -17,8 +17,6 @@ namespace {
 
 // Helper function to print the full human-readable contents of a mage::Message.
 void PrintFullMessageContents(Message& message) {
-  // CHECK_ON_THREAD(base::ThreadType::UI);
-
   std::vector<char>& payload_buffer = message.payload_buffer();
 
   MessageHeader* header =
@@ -61,23 +59,19 @@ Channel::Channel(int fd, Delegate* delegate)
     : SocketReader(fd),
       delegate_(delegate),
       io_task_loop_(*base::GetIOThreadTaskLoop()) {
-  CHECK_ON_THREAD(base::ThreadType::UI);
 }
 
 Channel::~Channel() {
-  CHECK_ON_THREAD(base::ThreadType::UI);
   io_task_loop_.UnwatchSocket(this);
 }
 
 void Channel::Start() {
-  CHECK_ON_THREAD(base::ThreadType::UI);
   io_task_loop_.WatchSocket(this);
 }
 
 void Channel::SendInvitation(std::string inviter_name,
                              std::string temporary_remote_node_name,
                              std::string intended_endpoint_peer_name) {
-  CHECK_ON_THREAD(base::ThreadType::UI);
   Message message(MessageType::SEND_INVITATION);
   MessageFragment<SendInvitationParams> params(message);
   params.Allocate();
@@ -103,7 +97,6 @@ void Channel::SendAcceptInvitation(
     std::string temporary_remote_node_name,
     std::string actual_node_name,
     std::string accept_invitation_endpoint_name) {
-  // CHECK(IsOnIOThread());
   Message message(MessageType::ACCEPT_INVITATION);
   MessageFragment<SendAcceptInvitationParams> params(message);
   params.Allocate();
@@ -127,11 +120,11 @@ void Channel::SendAcceptInvitation(
 
 void Channel::SendMessage(Message message) {
   LOG("\n\nChannel::SendMessage(): getpid(): %d, fd_: %d", getpid(), fd_);
-  // CHECK_ON_THREAD(base::ThreadType::UI);
   PrintFullMessageContents(message);
 
   std::vector<char>& payload_buffer = message.payload_buffer();
   CHECK_EQ(message.Size(), (int)payload_buffer.size());
+  // This is thread-safe, per https://stackoverflow.com/a/42442886.
   int rv = write(fd_, payload_buffer.data(), payload_buffer.size());
   CHECK_EQ(rv, message.Size());
 }

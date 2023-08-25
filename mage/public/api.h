@@ -24,6 +24,7 @@ class ReceiverDelegate;
 void Init(bool verbose = false);
 void Shutdown();
 
+// Thread-safe.
 std::vector<MessagePipe> CreateMessagePipes();
 MessagePipe SendInvitationAndGetMessagePipe(
     int fd,

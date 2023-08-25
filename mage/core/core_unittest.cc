@@ -51,20 +51,46 @@ class DummyProcessLauncher {
 
 namespace mage {
 
-class CoreUnitTest : public testing::Test {
+enum class MainThreadType {
+  kUIThread,
+  kIOThread,
+};
+
+class CoreUnitTest : public testing::TestWithParam<MainThreadType> {
  public:
   CoreUnitTest(): io_thread(base::ThreadType::IO) {}
 
+  // Provides meaningful param names instead of /0 and /1 etc.
+  static std::string DescribeParams(
+      const ::testing::TestParamInfo<ParamType>& info) {
+    switch (info.param) {
+      case MainThreadType::kUIThread:
+        return "MainThreadUI";
+      case MainThreadType::kIOThread:
+        return "MainThreadIO";
+      default:
+        NOTREACHED();
+    }
+
+    NOTREACHED();
+    return "NOTREACHED";
+  }
+
   void SetUp() override {
     dummy_launcher = std::unique_ptr<DummyProcessLauncher>(new DummyProcessLauncher());
-    main_thread = base::TaskLoop::Create(base::ThreadType::UI);
-    io_thread.Start();
-    // Mage relies on `base::GetIOThreadTaskLoop()` being synchronously
-    // available from the UI thread upon start up, which only happens after the
-    // IO thread has actually started, which we can know by only continuing once
-    // we've confirmed it is running tasks.
-    io_thread.GetTaskRunner()->PostTask(main_thread->QuitClosure());
-    main_thread->Run();
+    if (GetParam() == MainThreadType::kUIThread) {
+      main_thread = base::TaskLoop::Create(base::ThreadType::UI);
+      io_thread.Start();
+      // Mage relies on `base::GetIOThreadTaskLoop()` being synchronously
+      // available from the UI thread upon start up, which only happens after the
+      // IO thread has actually started, which we can know by only continuing once
+      // we've confirmed it is running tasks.
+      io_thread.GetTaskRunner()->PostTask(main_thread->QuitClosure());
+      main_thread->Run();
+    } else {
+      CHECK_EQ(GetParam(), MainThreadType::kIOThread);
+      main_thread = base::TaskLoop::Create(base::ThreadType::IO);
+    }
 
     mage::Core::Init();
     EXPECT_TRUE(mage::Core::Get());
@@ -95,18 +121,23 @@ class CoreUnitTest : public testing::Test {
   base::Thread io_thread;
 };
 
-TEST_F(CoreUnitTest, CoreInitStateUnitTest) {
+INSTANTIATE_TEST_SUITE_P(All,
+                         CoreUnitTest,
+                         testing::Values(MainThreadType::kUIThread, MainThreadType::kIOThread),
+                         &CoreUnitTest::DescribeParams);
+
+TEST_P(CoreUnitTest, CoreInitStateUnitTest) {
   EXPECT_EQ(CoreHandleTable().size(), 0);
   EXPECT_EQ(NodeLocalEndpoints().size(), 0);
 }
 
-TEST_F(CoreUnitTest, UseUnboundRemoteCrashes) {
+TEST_P(CoreUnitTest, UseUnboundRemoteCrashes) {
   mage::Remote<magen::TestInterface> remote;
   ASSERT_DEATH({
     remote->SendMoney(0, "");
   }, "bound_*");
 }
-TEST_F(CoreUnitTest, UseUnboundRemoteCrashes2) {
+TEST_P(CoreUnitTest, UseUnboundRemoteCrashes2) {
   std::vector<mage::MessagePipe> pipes = mage::Core::CreateMessagePipes();
   mage::Remote<magen::TestInterface> remote;
   remote.Bind(pipes[0]);
@@ -124,7 +155,7 @@ TEST_F(CoreUnitTest, UseUnboundRemoteCrashes2) {
 // endpoints bound to a remote, as this test sadly asserts. This isn't great
 // behavior, but it shouldn't really be possible to run into anyways once
 // MessagePipes move-only.
-TEST_F(CoreUnitTest, SendBoundRemoteTechnicallyAllowedUnitTest) {
+TEST_P(CoreUnitTest, SendBoundRemoteTechnicallyAllowedUnitTest) {
   std::vector<mage::MessagePipe> first_pair = mage::Core::CreateMessagePipes();
   std::vector<mage::MessagePipe> second_pair = mage::Core::CreateMessagePipes();
 
@@ -142,7 +173,7 @@ class SIDummy : public magen::SecondInterface {
   void NotifyDoneViaCallback() { NOTREACHED(); }
   void SendReceiverForThirdInterface(MessagePipe receiver) { NOTREACHED(); }
 };
-TEST_F(CoreUnitTest, SendBoundReceiverUnitTest) {
+TEST_P(CoreUnitTest, SendBoundReceiverUnitTest) {
   std::vector<mage::MessagePipe> first_pair = mage::Core::CreateMessagePipes();
   std::vector<mage::MessagePipe> second_pair = mage::Core::CreateMessagePipes();
 
@@ -164,21 +195,32 @@ class SecondInterfaceOnlyStringAcceptor : public magen::SecondInterface {
   void NotifyDoneViaCallback() { NOTREACHED(); }
   void SendReceiverForThirdInterface(MessagePipe receiver) { NOTREACHED(); }
 };
-TEST_F(CoreUnitTest, RemoteAndReceiverDifferentInterfaces) {
-  std::vector<mage::MessagePipe> pipes = mage::Core::CreateMessagePipes();
-
-  mage::Remote<magen::FirstInterface> remote(pipes[0]);
-  mage::Receiver<magen::SecondInterface> receiver;
-  SecondInterfaceOnlyStringAcceptor second_interface_impl;
-  receiver.Bind(pipes[1], &second_interface_impl);
-
-  remote->SendString("Dominic");
+TEST_P(CoreUnitTest, RemoteAndReceiverDifferentInterfaces) {
   ASSERT_DEATH({
+    // `ASSERT_DEATH` forks the process, but does so in a way that doesn't
+    // initialize `main_thread` correctly if it is an "IO" thread. That's
+    // because the underlying thread's pipe (file descriptor, mach port, etc.)
+    // doesn't necessarily get opened properly (on macOS at the very least). So
+    // actually *running* the loop (if it doesn't get initialized properly
+    // *inside* the new process) will fail.
+    if (GetParam() == MainThreadType::kIOThread) {
+      main_thread.reset();
+      main_thread = base::TaskLoop::Create(base::ThreadType::IO);
+    }
+
+    std::vector<mage::MessagePipe> pipes = mage::Core::CreateMessagePipes();
+
+    mage::Remote<magen::FirstInterface> remote(pipes[0]);
+    mage::Receiver<magen::SecondInterface> receiver;
+    SecondInterfaceOnlyStringAcceptor second_interface_impl;
+    receiver.Bind(pipes[1], &second_interface_impl);
+
+    remote->SendString("Dominic");
     main_thread->Run();
   }, "false*");
 }
 
-TEST_F(CoreUnitTest, InitializeAndEntangleEndpointsUnitTest) {
+TEST_P(CoreUnitTest, InitializeAndEntangleEndpointsUnitTest) {
   const auto& [local, remote] = Node().InitializeAndEntangleEndpoints();
 
   EXPECT_EQ(CoreHandleTable().size(), 0);
@@ -196,7 +238,7 @@ TEST_F(CoreUnitTest, InitializeAndEntangleEndpointsUnitTest) {
   EXPECT_EQ(remote->peer_address.endpoint_name, local->name);
 }
 
-TEST_F(CoreUnitTest, SendInvitationUnitTest) {
+TEST_P(CoreUnitTest, SendInvitationUnitTest) {
   MessagePipe message_pipe =
     mage::Core::SendInvitationAndGetMessagePipe(
       dummy_launcher->GetLocalFd()
@@ -212,7 +254,7 @@ TEST_F(CoreUnitTest, SendInvitationUnitTest) {
   remote->Method1(1, .4, "test");
 }
 
-TEST_F(CoreUnitTest, AcceptInvitationUnitTest) {
+TEST_P(CoreUnitTest, AcceptInvitationUnitTest) {
   mage::Core::AcceptInvitation(dummy_launcher->GetLocalFd(),
                                [](MessagePipe) {
                                  NOTREACHED();
@@ -222,6 +264,52 @@ TEST_F(CoreUnitTest, AcceptInvitationUnitTest) {
   // information, there is no impact on our mage state.
   EXPECT_EQ(CoreHandleTable().size(), 0);
   EXPECT_EQ(NodeLocalEndpoints().size(), 0);
+}
+
+// Tests that message pipe creation is thread-safe.
+// See the tests `MageTest.MultiThreadRacyMessageSendingFromSameProcess` and
+// `MageTest.MultiThreadRacyMessageSendingFromRemoteProcess` for thread-safety
+// tests when it comes to sending and receiving messages.
+TEST_P(CoreUnitTest, CreateMessagePipesFromAnyThread) {
+  // This data structure is accessed thread-safely from 100 different threads,
+  // each of which adds 200 pipes.
+  std::vector<std::vector<mage::MessagePipe>> global_pipes(100,
+      std::vector<mage::MessagePipe>(200, 0));
+
+  std::vector<std::unique_ptr<base::Thread>> worker_threads;
+  for (int i = 0; i < 100; ++i) {
+    worker_threads.push_back(std::make_unique<base::Thread>(base::ThreadType::WORKER));
+    worker_threads[i]->Start();
+    worker_threads[i]->GetTaskRunner()->PostTask([&global_pipes, i](){
+      for (int j = 0; j < 100; ++j) {
+        auto pipes = mage::Core::CreateMessagePipes();
+        global_pipes[i][j * 2] = pipes[0];
+        global_pipes[i][(j * 2) + 1] = pipes[1];
+      }
+    });
+  }
+
+  for (auto& thread : worker_threads) {
+    thread->StopWhenIdle();
+  }
+
+  // Ensure that all of the pipes are unique, and therefore were generated
+  // thread-safely.
+  std::set<mage::MessagePipe> pipe_set;
+  for (auto& thread_pipe_vector : global_pipes) {
+    for (auto& message_pipe : thread_pipe_vector) {
+      EXPECT_NE(message_pipe, kInvalidPipe);
+
+      auto it = pipe_set.find(message_pipe);
+      EXPECT_EQ(it, pipe_set.end());
+      pipe_set.insert(message_pipe);
+    }
+  }
+
+  // Invitation is asynchronous, so until we receive and formally accept the
+  // information, there is no impact on our mage state.
+  EXPECT_EQ(CoreHandleTable().size(), 20000);
+  EXPECT_EQ(NodeLocalEndpoints().size(), 20000);
 }
 
 }; // namespace mage
