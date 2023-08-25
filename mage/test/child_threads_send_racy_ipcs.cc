@@ -12,6 +12,7 @@
 #include "base/threading/thread_checker.h"
 #include "mage/public/api.h"
 #include "mage/public/bindings/message_pipe.h"
+#include "mage/public/bindings/receiver.h"
 #include "mage/public/bindings/remote.h"
 #include "mage/test/magen/callback_interface.magen.h"  // Generated.
 #include "mage/test/magen/handle_accepter.magen.h"  // Generated.
@@ -20,7 +21,7 @@
 // corresponds to this test binary.
 
 const int kNumThreads = 10;
-const int kNumThreads = 100;
+const int kNumMessagesEachThread = 100;
 
 class HandleAccepter : public magen::HandleAccepter {
  public:
@@ -32,28 +33,39 @@ class HandleAccepter : public magen::HandleAccepter {
     remote_pipes_.push_back(remote_pipe);
 
     if (remote_pipes_.size() == kNumThreads) {
-      std::vector<std::unique_ptr<base::Thread>> worker_threads;
-
-      // Create all of the threads and send all of the messages back to the parent.
-      for (int i = 0; i < kNumThreads; ++i) {
-        mage::MessagePipe remote_pipe = remote_pipes_[i];
-
-        worker_threads.push_back(std::make_unique<base::Thread>(base::ThreadType::WORKER));
-        worker_threads[i]->Start();
-        worker_threads[i]->GetTaskRunner()->PostTask([remote_pipe](){
-          mage::Remote<magen::CallbackInterface> callback_remote;
-          callback_remote.Bind(remote_pipe);
-        
-          // Invoke `NotifyDone()` on the callback (that lives on the main thread)
-          // `kNumMessagesEachThread` times.
-          for (int j = 0; j < kNumMessagesEachThread; ++j) {
-            callback_remote->NotifyDone();
-          }
-        }
-      }
+      SpinUpThreadsAndSendMessagesToParent();
+    }
   }
 
  private:
+  void SpinUpThreadsAndSendMessagesToParent() {
+    // Create all of the threads and send all of the messages back to the
+    // parent.
+    std::vector<std::unique_ptr<base::Thread>> worker_threads;
+    for (int i = 0; i < kNumThreads; ++i) {
+      mage::MessagePipe remote_pipe = remote_pipes_[i];
+
+      worker_threads.push_back(
+          std::make_unique<base::Thread>(base::ThreadType::WORKER));
+      worker_threads[i]->Start();
+      worker_threads[i]->GetTaskRunner()->PostTask([remote_pipe](){
+        mage::Remote<magen::CallbackInterface> callback_remote;
+        callback_remote.Bind(remote_pipe);
+
+        // Invoke `NotifyDone()` on the callback (that lives on the main thread)
+        // `kNumMessagesEachThread` times.
+        for (int j = 0; j < kNumMessagesEachThread; ++j) {
+          callback_remote->NotifyDone();
+        }
+      });
+    }
+
+    // Wait for each thread to finish before destroying all of them.
+    for (auto& thread : worker_threads) {
+      thread->StopWhenIdle();
+    }
+  }
+
   mage::Receiver<magen::HandleAccepter> receiver_;
   std::vector<mage::MessagePipe> remote_pipes_;
 };

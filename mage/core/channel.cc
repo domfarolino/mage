@@ -124,7 +124,7 @@ void Channel::SendMessage(Message message) {
 
   std::vector<char>& payload_buffer = message.payload_buffer();
   CHECK_EQ(message.Size(), (int)payload_buffer.size());
-  // TODO(domfarolino): Lock this section so that we don't interleave writes.
+  // This is thread-safe, per https://stackoverflow.com/a/42442886.
   int rv = write(fd_, payload_buffer.data(), payload_buffer.size());
   CHECK_EQ(rv, message.Size());
 }
