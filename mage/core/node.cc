@@ -34,12 +34,13 @@ Node::InitializeAndEntangleEndpoints() const {
 }
 
 void Node::RegisterEndpoint(std::shared_ptr<Endpoint> new_endpoint) {
-  // TODO(domfarolino): Probably local `local_endpoints_` here.
   // Make sure the endpoint isn't already registered.
+  local_endpoints_lock_.lock();
   auto it = local_endpoints_.find(new_endpoint->name);
   CHECK_EQ(it, local_endpoints_.end());
 
   local_endpoints_.insert({new_endpoint->name, new_endpoint});
+  local_endpoints_lock_.unlock();
 }
 
 std::vector<MessagePipe> Node::CreateMessagePipes() {
@@ -50,14 +51,22 @@ std::vector<MessagePipe> Node::CreateMessagePipes() {
 
 std::vector<std::pair<MessagePipe, std::shared_ptr<Endpoint>>>
 Node::CreateMessagePipesAndGetEndpoints() {
+  // Thread-safely generate two fresh endpoints.
   const auto& [endpoint_1, endpoint_2] = InitializeAndEntangleEndpoints();
+  // Independently, thread-safely generate them a unique `MessagePipe` handle.
   MessagePipe handle_1 = Core::Get()->GetNextMessagePipe(),
               handle_2 = Core::Get()->GetNextMessagePipe();
+
+  // Now simply register/associate the endpoints/message pipes. This is also
+  // thread-safe.
   Core::Get()->RegisterLocalHandleAndEndpoint(handle_1, endpoint_1);
   Core::Get()->RegisterLocalHandleAndEndpoint(handle_2, endpoint_2);
-  // TODO(domfarolino): Probably lock `local_endpoints_` here.
+
+  // Ensure that the endpoints have been inserted.
+  local_endpoints_lock_.lock();
   CHECK_NE(local_endpoints_.find(endpoint_1->name), local_endpoints_.end());
   CHECK_NE(local_endpoints_.find(endpoint_2->name), local_endpoints_.end());
+  local_endpoints_lock_.unlock();
   return {std::make_pair(handle_1, endpoint_1),
           std::make_pair(handle_2, endpoint_2)};
 }

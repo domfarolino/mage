@@ -96,6 +96,7 @@ class Core {
   base::Mutex handle_table_lock_;
 
   MessagePipe next_available_handle_ = 1;
+  base::Mutex next_available_handle_lock_;
 
   // This is optionally supplied when sending an invitation. It reports back
   // when the remote process has accepted the invitation. Guaranteed to be

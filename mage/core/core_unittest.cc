@@ -266,4 +266,50 @@ TEST_P(CoreUnitTest, AcceptInvitationUnitTest) {
   EXPECT_EQ(NodeLocalEndpoints().size(), 0);
 }
 
+// Tests that message pipe creation is thread-safe.
+// See the tests `MageTest.MultiThreadRacyMessageSendingFromSameProcess` and
+// `MageTest.MultiThreadRacyMessageSendingFromRemoteProcess` for thread-safety
+// tests when it comes to sending and receiving messages.
+TEST_P(CoreUnitTest, CreateMessagePipesFromAnyThread) {
+  // This data structure is accessed thread-safely from 100 different threads,
+  // each of which adds 200 pipes.
+  std::vector<std::vector<mage::MessagePipe>> global_pipes(100,
+      std::vector<mage::MessagePipe>(200, 0));
+
+  std::vector<std::unique_ptr<base::Thread>> worker_threads;
+  for (int i = 0; i < 100; ++i) {
+    worker_threads.push_back(std::make_unique<base::Thread>(base::ThreadType::WORKER));
+    worker_threads[i]->Start();
+    worker_threads[i]->GetTaskRunner()->PostTask([&global_pipes, i](){
+      for (int j = 0; j < 100; ++j) {
+        auto pipes = mage::Core::CreateMessagePipes();
+        global_pipes[i][j * 2] = pipes[0];
+        global_pipes[i][(j * 2) + 1] = pipes[1];
+      }
+    });
+  }
+
+  for (auto& thread : worker_threads) {
+    thread->StopWhenIdle();
+  }
+
+  // Ensure that all of the pipes are unique, and therefore were generated
+  // thread-safely.
+  std::set<mage::MessagePipe> pipe_set;
+  for (auto& thread_pipe_vector : global_pipes) {
+    for (auto& message_pipe : thread_pipe_vector) {
+      EXPECT_NE(message_pipe, kInvalidPipe);
+
+      auto it = pipe_set.find(message_pipe);
+      EXPECT_EQ(it, pipe_set.end());
+      pipe_set.insert(message_pipe);
+    }
+  }
+
+  // Invitation is asynchronous, so until we receive and formally accept the
+  // information, there is no impact on our mage state.
+  EXPECT_EQ(CoreHandleTable().size(), 20000);
+  EXPECT_EQ(NodeLocalEndpoints().size(), 20000);
+}
+
 }; // namespace mage
