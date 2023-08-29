@@ -115,14 +115,16 @@ MessagePipe Node::SendInvitationAndGetMessagePipe(int fd) {
 
   NodeName temporary_remote_node_name = util::RandomIdentifier();
 
-  // TODO(domfarolino): Probably lock `node_channel_map_` here, since another
-  // thread could be accessing this at the same time when sending a remote
-  // message.
+  // Lock this map because it could be accessed from many threads, since the
+  // embedder can choose to send invitations from any thread.
+  node_channel_map_lock_.lock();
   auto it = node_channel_map_.insert(
       {temporary_remote_node_name,
        std::make_unique<Channel>(fd, /*delegate=*/this)});
-  // TODO(domfarolino): Maybe lock this?
+  node_channel_map_lock_.unlock();
+  pending_invitations_lock_.lock();
   pending_invitations_.insert({temporary_remote_node_name, remote_endpoint});
+  pending_invitations_lock_.unlock();
 
   // Similar to `AcceptInvitation()` below, only start the channel after it and
   // `remote_endpoint` have been inserted into their maps. Right when we the
@@ -148,11 +150,30 @@ void Node::AcceptInvitation(int fd) {
 
   LOG("Node::AcceptInvitation() getpid: %d", getpid());
   std::unique_ptr<Channel> channel(new Channel(fd, this));
+  // Thread-safety: We don't need to take a lock on this map here because in
+  // general, nodes that accept invitations should not be sending them too.
+  // Doing so is technically possible for now, but is considered "unsupported",
+  // and therefore we don't go out of our way to make it safe. See the
+  // corresponding documentation in `Node::OnReceivedInvitation()`, which gets
+  // invoked asynchronously after we call `Channel::Start()` below.
   auto it = node_channel_map_.insert({kInitialChannelName, std::move(channel)});
+
   // Start the channel *after* it is inserted into the map, because right when
-  // it starts, the IO thread could try and read from `node_channel_map_` at any
-  // time, since messages will start coming in (for example,
-  // `OnReceivedInvitation()`).
+  // it starts, messages could start coming in and being read from any other
+  // thread. This is because `Channel::Start()` defers to the embedder-supplied
+  // IO mechanism for receiving messages on `fd`, and that mechanism might
+  // always listen for (and read) messages on whatever thread that IO mechanism
+  // is bound to, which may be different than *this* thread.
+  //
+  // For example, if the embedder is using the `//base` library [1], there's
+  // only ever a single "IO" thread capable of socket communication at any given
+  // time in a process. If this method is run on any other thread than the IO
+  // thread, then right when `Channel::Start()` is invoked on *this* thread,
+  // incoming messages like `OnReceivedInvitation()` could start coming in on
+  // the IO thread at any time, and expect `channel` to exist in
+  // `node_channel_map_` under the `kInitialChannelName` name.
+  //
+  // [1]: https://github.com/domfarolino/base.
   it.first->second->Start();
 
   has_accepted_invitation_ = true;
@@ -260,8 +281,6 @@ void Node::SendMessage(std::shared_ptr<Endpoint> local_endpoint,
 }
 
 void Node::OnReceivedMessage(Message message) {
-  CHECK_ON_THREAD(base::ThreadType::IO);
-
   switch (message.Type()) {
     case MessageType::SEND_INVITATION:
       OnReceivedInvitation(std::move(message));
@@ -278,7 +297,6 @@ void Node::OnReceivedMessage(Message message) {
 }
 
 void Node::OnReceivedInvitation(Message message) {
-  CHECK_ON_THREAD(base::ThreadType::IO);
   SendInvitationParams* params = message.GetView<SendInvitationParams>();
 
   // Deserialize
@@ -298,6 +316,13 @@ void Node::OnReceivedInvitation(Message message) {
 
   // Now that we know our inviter's name, we can find our initial channel in our
   // map, and change the entry's key to the actual inviter's name.
+  //
+  // Thread-safety: We don't need to take a lock over this map. That's because a
+  // node can only accept a single invitation throughout its life, and
+  // invitation-accepting nodes shouldn't be able to *send* invitations (see the
+  // documentation in `Node::AcceptInvitation()`). This is safe because at this
+  // point, `this` can't know about any other nodes/channels yet, so this map is
+  // essentially static at this point.
   auto it = node_channel_map_.find(kInitialChannelName);
   CHECK_NE(it, node_channel_map_.end());
   std::unique_ptr<Channel> init_channel = std::move(it->second);
@@ -330,7 +355,6 @@ void Node::OnReceivedInvitation(Message message) {
 }
 
 void Node::OnReceivedAcceptInvitation(Message message) {
-  CHECK_ON_THREAD(base::ThreadType::IO);
   SendAcceptInvitationParams* params =
       message.GetView<SendAcceptInvitationParams>();
   std::string temporary_remote_node_name(
@@ -347,13 +371,18 @@ void Node::OnReceivedAcceptInvitation(Message message) {
 
   // We should only get ACCEPT_INVITATION messages from nodes that we have a
   // pending invitation for.
+  //
+  // In order to acknowledge the invitation acceptance, we must do four things:
+  //   1.) Remove the pending invitation from |pending_invitations_|.
+  pending_invitations_lock_.lock();
   auto remote_endpoint_it =
       pending_invitations_.find(temporary_remote_node_name);
   CHECK_NE(remote_endpoint_it, pending_invitations_.end());
   std::shared_ptr<Endpoint> remote_endpoint = remote_endpoint_it->second;
+  pending_invitations_.erase(temporary_remote_node_name);
+  pending_invitations_lock_.unlock();
 
-  // In order to acknowledge the invitation acceptance, we must do four things:
-  //   1.) Put |remote_endpoint| in the `kUnboundAndProxying` state, so that
+  //   2.) Put |remote_endpoint| in the `kUnboundAndProxying` state, so that
   //       when `SendMessage()` gets message bound for it, it knows to forward
   //       them to the appropriate remote node.
   CHECK_NE(local_endpoints_.find(remote_endpoint->name),
@@ -372,16 +401,19 @@ void Node::OnReceivedAcceptInvitation(Message message) {
       remote_endpoint->proxy_target.node_name.c_str(),
       remote_endpoint->proxy_target.endpoint_name.c_str());
 
-  //   2.) Remove the pending invitation from |pending_invitations_|.
-  pending_invitations_.erase(temporary_remote_node_name);
-
   //   3.) Update |node_channel_map_| to correctly be keyed off of
   //       |actual_node_name|.
+  //
+  //       Lock the node channel map because in the path of acknowledging an
+  //       accepted invitation, other threads could be sending other invitations
+  //       and mutating the same map.
+  node_channel_map_lock_.lock();
   auto node_channel_it = node_channel_map_.find(temporary_remote_node_name);
   CHECK_NE(node_channel_it, node_channel_map_.end());
   std::unique_ptr<Channel> channel = std::move(node_channel_it->second);
   node_channel_map_.erase(temporary_remote_node_name);
   node_channel_map_.insert({actual_node_name, std::move(channel)});
+  node_channel_map_lock_.unlock();
 
   //   4.) Forward any messages that were queued in |remote_endpoint| so that
   //       the remote node's endpoint gets them. Note that the messages queued
@@ -506,8 +538,10 @@ void Node::SendMessagesAndRecursiveDependents(
     }
 
     // Forward the message and remove it from the queue.
+    node_channel_map_lock_.lock();
     node_channel_map_[target_node_name]->SendMessage(
         std::move(message_to_send));
+    node_channel_map_lock_.unlock();
 
     // See the documentation above `locked_dependent_endpoints`.
     for (const std::shared_ptr<Endpoint>& endpoint : locked_dependent_endpoints)
@@ -562,8 +596,14 @@ void Node::OnReceivedUserMessage(Message message) {
       memcpy(message.GetMutableMessageHeader().target_endpoint,
              proxy_target.endpoint_name.c_str(), kIdentifierSize);
       PrepareToForwardUserMessage(endpoint, message);
+      // Lock the node channel map because the thread we receive a message a
+      // message on (and therefore forward messages to another node in this
+      // proxying case) could be different than the arbitrary threads that might
+      // be sending invitations to other processes.
+      node_channel_map_lock_.lock();
       node_channel_map_[endpoint->proxy_target.node_name]->SendMessage(
           std::move(message));
+      node_channel_map_lock_.unlock();
       break;
     }
     case Endpoint::State::kBound:

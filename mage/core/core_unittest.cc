@@ -101,6 +101,25 @@ class CoreUnitTest : public testing::TestWithParam<MainThreadType> {
     io_thread.StopWhenIdle(); // Blocks.
     main_thread.reset();
     dummy_launcher.reset();
+    for (int& socket : extra_sockets_) {
+      EXPECT_EQ(close(socket), 0);
+    }
+  }
+
+  void GetSockets(int num_sockets, std::vector<int>& return_sockets) {
+    // This method is only called once per test.
+    ASSERT_EQ(extra_sockets_.size(), 0);
+
+    for (int i = 0; i < num_sockets; ++i) {
+      int socket_pair[2];
+      ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, socket_pair), 0);
+      ASSERT_EQ(fcntl(socket_pair[0], F_SETFL), 0);
+      ASSERT_EQ(fcntl(socket_pair[1], F_SETFL), 0);
+
+      return_sockets.push_back(socket_pair[0]);
+      extra_sockets_.push_back(socket_pair[0]);
+      extra_sockets_.push_back(socket_pair[1]);
+    }
   }
 
  protected:
@@ -119,6 +138,7 @@ class CoreUnitTest : public testing::TestWithParam<MainThreadType> {
   std::unique_ptr<DummyProcessLauncher> dummy_launcher;
   std::shared_ptr<base::TaskLoop> main_thread;
   base::Thread io_thread;
+  std::vector<int> extra_sockets_;
 };
 
 INSTANTIATE_TEST_SUITE_P(All,
@@ -310,6 +330,35 @@ TEST_P(CoreUnitTest, CreateMessagePipesFromAnyThread) {
   // information, there is no impact on our mage state.
   EXPECT_EQ(CoreHandleTable().size(), 20000);
   EXPECT_EQ(NodeLocalEndpoints().size(), 20000);
+}
+
+// This test spins up N threads that send ten invitations each, all on different
+// sockets.
+TEST_P(CoreUnitTest, MultiThreadRacyInvitationSending) {
+  const int kNumThreads = 10;
+  const int kNumInvitationsPerThread = 8;
+  // Get one socket per thread.
+  std::vector<int> sockets;
+  GetSockets(kNumThreads * kNumInvitationsPerThread, sockets);
+  ASSERT_EQ(sockets.size(), kNumThreads * kNumInvitationsPerThread);
+
+  std::vector<std::unique_ptr<base::Thread>> worker_threads;
+  for (int i = 0; i < kNumThreads; ++i) {
+    worker_threads.push_back(std::make_unique<base::Thread>(base::ThreadType::WORKER));
+    worker_threads[i]->Start();
+    worker_threads[i]->GetTaskRunner()->PostTask([i, &sockets](){
+      for (int j = 0; j < kNumInvitationsPerThread; ++j) {
+        mage::Core::SendInvitationAndGetMessagePipe(sockets[i * kNumInvitationsPerThread + j]);
+      }
+    });
+  }
+
+  for (auto& worker_thread : worker_threads) {
+    worker_thread->StopWhenIdle();
+  }
+
+  EXPECT_EQ(CoreHandleTable().size(), kNumThreads * kNumInvitationsPerThread * 2);
+  EXPECT_EQ(NodeLocalEndpoints().size(), kNumThreads * kNumInvitationsPerThread * 2);
 }
 
 }; // namespace mage
