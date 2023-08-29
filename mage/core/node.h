@@ -29,7 +29,6 @@ class Node : public Channel::Delegate {
 
   // Thread-safe.
   std::vector<MessagePipe> CreateMessagePipes();
-
   MessagePipe SendInvitationAndGetMessagePipe(int fd);
   void AcceptInvitation(int fd);
   void SendMessage(std::shared_ptr<Endpoint> local_endpoint, Message message);
@@ -82,6 +81,7 @@ class Node : public Channel::Delegate {
   // endpoint in the same node (that is, from an endpoint in Node A to its peer
   // endpoint also in Node A) go through a different path.
   std::map<NodeName, std::unique_ptr<Channel>> node_channel_map_;
+  base::Mutex node_channel_map_lock_;
 
   // Maps |NodeNames| that we've sent invitations to and are awaiting
   // acceptances from, to an |Endpoint| that we've reserved for the peer node.
@@ -91,6 +91,7 @@ class Node : public Channel::Delegate {
   // we've given it, we update instances of its temporary name with its "real"
   // one that it provides in the invitation acceptance message.
   std::map<NodeName, std::shared_ptr<Endpoint>> pending_invitations_;
+  base::Mutex pending_invitations_lock_;
 };
 
 };  // namespace mage

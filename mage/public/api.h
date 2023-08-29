@@ -29,6 +29,7 @@ std::vector<MessagePipe> CreateMessagePipes();
 MessagePipe SendInvitationAndGetMessagePipe(
     int fd,
     base::OnceClosure callback = base::OnceClosure());
+// Should only be called once per process (generally right after `Init()`).
 void AcceptInvitation(
     int fd,
     std::function<void(MessagePipe)> finished_accepting_invitation_callback);
