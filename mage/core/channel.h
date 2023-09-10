@@ -10,7 +10,32 @@ namespace mage {
 class Message;
 
 // The underlying implementation of cross-node (typically cross-process)
-// communication via socket primitives. Always runs on the IO thread.
+// communication via socket primitives. This object gets created synchronously
+// on whatever thread the Mage embedder calls operations that trigger its
+// creation (i.e., sending or accepting an invitation). This class is
+// responsible for IO, and as such, implements the `SocketReader` interface
+// whose concrete implementation is provided by the Mage embedder. This leads to
+// two interesting interactions that `this` has with the embedder-provided IO
+// mechanism:
+//   1. WRITE: Messages sent over `this` are written (to the underlying IO
+//      mechanism managed by `SocketReader`) ON THE THREAD that triggered
+//      `SendMessage()`. That is, we don't necessarily have a dedicated thread
+//     for sending messages; this can happen on any thread.
+//   2. READ: By `this` implementing the `SocketReader` interface, the Mage
+//      embedder can tell us (on the thread that *it* does IO on), when a
+//      message can be read from the underlying socket mechamism managed by
+//      `SocketReader`. This will likely be on a dedicated IO thread (for
+//      example, when the //base library [1] is being used by the Mage
+//      embedder), but that is not technically required or enforced.
+//
+// One major corollary that follows from the above is that reading and writing
+// messages can happen on different threads. Furthermore, since many threads can
+// use `this` to write/send multiple messages to the same process at the same
+// time, it is expected that the underlying socket mechanism (typically Unix
+// domain sockets on Linux or Mach Ports on macOS) is thread-safe, as `this`
+// does not provide a thread-safe abstraction on top of it.
+//
+// [1]: https://github.com/domfarolino/base.
 class Channel : public base::TaskLoopForIO::SocketReader {
  public:
   class Delegate {
@@ -22,6 +47,16 @@ class Channel : public base::TaskLoopForIO::SocketReader {
   Channel(int fd, Delegate* delegate);
   virtual ~Channel();
 
+  // `Start()` can be called from any thread — it's typically called
+  // whenever accepting or receiving process invitations. It registers `this`
+  // with the Mage embedder-supplied IO mechanism as an IO listener. The IO
+  // listener can listen for messages on the socket that the `SocketReader` base
+  // class is initialized with. "Listening" happens on whatever thread the Mage
+  // embedder deems is its "IO thread", which means `this` can *immediately*
+  // start receiving messages via `OnCanReadFromSocket()` on a different thread
+  // than `Start()` was called on.
+  //
+  // [1]: https://github.com/domfarolino/base
   void Start();
   void SetRemoteNodeName(const std::string& name);
   void SendInvitation(std::string inviter_name,
