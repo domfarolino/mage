@@ -8,7 +8,6 @@
 
 #include "base/check.h"
 #include "base/scheduling/scheduling_handles.h"
-#include "base/threading/thread_checker.h"  // for CHECK_ON_THREAD().
 #include "mage/core/endpoint.h"
 
 namespace mage {
@@ -131,7 +130,6 @@ void Channel::SendMessage(Message message) {
 
 void Channel::OnCanReadFromSocket() {
   LOG("\n\nChannel::OnCanReadFromSocket() getpid: %d", getpid());
-  CHECK_ON_THREAD(base::ThreadType::IO);
   std::vector<char> full_message_buffer;
 
   // Read the message header.
