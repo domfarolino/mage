@@ -37,12 +37,18 @@ class Node : public Channel::Delegate {
   void RegisterEndpoint(std::shared_ptr<Endpoint>);
 
   // Channel::Delegate implementation:
+  //
+  // This is immediately called from `Channel` when it can read a new message,
+  // which means it is called from whatever thread the Mage embedder deems its
+  // "IO" thread.
   void OnReceivedMessage(Message message) override;
 
  private:
   // Control message handlers.
   void OnReceivedInvitation(Message message);
   void OnReceivedAcceptInvitation(Message message);
+  // "User" message handler, which handles all non-control messages. These are
+  // the "custom" messages that users can write via `Mage` bindings.
   void OnReceivedUserMessage(Message message);
 
   friend class CoreUnitTest;

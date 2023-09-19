@@ -552,7 +552,6 @@ void Node::SendMessagesAndRecursiveDependents(
 }
 
 void Node::OnReceivedUserMessage(Message message) {
-  CHECK_ON_THREAD(base::ThreadType::IO);
   LOG("Node::OnReceivedUserMessage getpid(): %d", getpid());
   // 1. Extract the endpoint that the message is bound for.
   char* target_endpoint_buffer =

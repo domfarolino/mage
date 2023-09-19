@@ -71,7 +71,7 @@ class Channel : public base::TaskLoopForIO::SocketReader {
   //
   // See `Start()` documentation above. This method can be called immediately
   // after `Start()` on whatever thread the Mage embedder deems is its "IO"
-  // thread.
+  // thread. This method immediately calls `delegate_`'s message handler.
   void OnCanReadFromSocket() override;
 
  private:
