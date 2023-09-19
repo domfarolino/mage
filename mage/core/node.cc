@@ -3,7 +3,6 @@
 #include <memory>
 
 #include "base/check.h"
-#include "base/threading/thread_checker.h"  // for CHECK_ON_THREAD().
 #include "mage/core/core.h"
 #include "mage/core/endpoint.h"
 #include "mage/public/message.h"
@@ -587,6 +586,12 @@ void Node::OnReceivedUserMessage(Message message) {
   switch (endpoint->state) {
     case Endpoint::State::kUnboundAndProxying: {
       Address& proxy_target = endpoint->proxy_target;
+      // An endpoint is only ever proxying to a *remote* Node. Even if an
+      // endpoint in Node A is proxying to an endpoint in Node B, and that
+      // remote endpoint (in Node B) is proxying *back* to a different endpoint
+      // in Node A, the two endpoints in Node A will be distinct, and the first
+      // one that's proxying to Node "B" will have no idea about the ultimate
+      // receiving one that happens to also be in Node A.
       CHECK_NE(proxy_target.node_name, name_);
 
       LOG("  Node::OnReceivedUserMessage() received a message when in the "
@@ -594,11 +599,12 @@ void Node::OnReceivedUserMessage(Message message) {
           proxy_target.node_name.c_str(), proxy_target.endpoint_name.c_str());
       memcpy(message.GetMutableMessageHeader().target_endpoint,
              proxy_target.endpoint_name.c_str(), kIdentifierSize);
-      PrepareToForwardUserMessage(endpoint, message);
+      PrepareToForwardUserMessage(message, proxy_target.node_name);
+
       // Lock the node channel map because the thread we receive a message a
       // message on (and therefore forward messages to another node in this
       // proxying case) could be different than the arbitrary threads that might
-      // be sending invitations to other processes.
+      // be sending invitations to other processes and mutating the map.
       node_channel_map_lock_.lock();
       node_channel_map_[endpoint->proxy_target.node_name]->SendMessage(
           std::move(message));
@@ -613,14 +619,18 @@ void Node::OnReceivedUserMessage(Message message) {
   endpoint->Unlock();
 }
 
-void Node::PrepareToForwardUserMessage(std::shared_ptr<Endpoint> endpoint,
-                                       Message& message) {
-  CHECK_ON_THREAD(base::ThreadType::IO);
-  CHECK_EQ(endpoint->state, Endpoint::State::kUnboundAndProxying);
-
+void Node::PrepareToForwardUserMessage(Message& message, std::string proxy_target_node_name) {
   std::vector<EndpointDescriptor*> descriptors_to_forward =
       message.GetEndpointDescriptors();
   for (EndpointDescriptor* descriptor : descriptors_to_forward) {
+    // We just received `message` from Node A, and have to immediately forward
+    // it to Node B. Node A gave each `EndpointDescriptor` a predetermined
+    // `cross_node_endpoint_name` which is expected to be the local endpoint's
+    // actual name in the receiving process (which is us!). Therefore, when we
+    // reference each local endpoint that's associated with each
+    // `EndpointDescriptor` in `message`, we must do so by its
+    // `cross_node_endpoint_name` — the name that *this* Node used to register
+    // the endpoint.
     std::string endpoint_name(descriptor->cross_node_endpoint_name,
                               kIdentifierSize);
     LOG("Looking for a local endpoint by the name of: %s to put into a "
@@ -664,7 +674,7 @@ void Node::PrepareToForwardUserMessage(std::shared_ptr<Endpoint> endpoint,
     // about these dependent endpoints inside `message`, since they were just
     // created during this flow and not exported anywhere.
     backing_endpoint->SetProxying(
-        /*in_node_name=*/endpoint->proxy_target.node_name,
+        /*in_node_name=*/proxy_target_node_name,
         /*in_endpoint_name=*/new_cross_node_endpoint_name);
   }
 }

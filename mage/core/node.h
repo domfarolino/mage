@@ -44,6 +44,10 @@ class Node : public Channel::Delegate {
   void OnReceivedMessage(Message message) override;
 
  private:
+  // To more easily reason about the below methods & data structures.
+  using NodeName = std::string;
+  using EndpointName = std::string;
+
   // Control message handlers.
   void OnReceivedInvitation(Message message);
   void OnReceivedAcceptInvitation(Message message);
@@ -61,17 +65,19 @@ class Node : public Channel::Delegate {
   InitializeAndEntangleEndpoints() const;
   void SendMessagesAndRecursiveDependents(std::queue<Message> messages,
                                           std::string);
-  void PrepareToForwardUserMessage(std::shared_ptr<Endpoint> endpoint,
-                                   Message& message);
+  // This is a helper method that is called immediately when we receive a 
+  // message that is bound for an endpoint that is in the `kUnboundAndProxying`
+  // state. It takes a `Message` and a target `Node` name, and updates all of
+  // the `EndpointDescriptor`s in the message for delivery in the target node,
+  // and also sets each of their backing local endpoints to the proxying state,
+  // so they continue to forward any messages they receive.
+  void PrepareToForwardUserMessage(Message& message,
+                                   NodeName proxy_target_node_name);
 
   std::string name_;
 
   // True once |this| accepts an invitation from an inviter node.
   bool has_accepted_invitation_ = false;
-
-  // To more easily reason about the below data structures.
-  using NodeName = std::string;
-  using EndpointName = std::string;
 
   // All endpoints that are local to this node, that is, whose address's
   // "node name" is our |name_|.
