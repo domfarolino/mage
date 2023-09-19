@@ -1,7 +1,8 @@
 #include "mage/core/endpoint.h"
 
+#include <unistd.h>
+
 #include "base/scheduling/task_runner.h"
-#include "base/threading/thread_checker.h"
 #include "mage/core/core.h"
 #include "mage/public/bindings/receiver_delegate.h"
 
@@ -21,7 +22,6 @@ bool is_weak_ptr_assigned(std::weak_ptr<T> const& weak) {
 
 // Guarded by `lock_`.
 void Endpoint::AcceptMessageOnIOThread(Message message) {
-  CHECK_ON_THREAD(base::ThreadType::IO);
   CHECK(state != State::kUnboundAndProxying);
   LOG("Endpoint::AcceptMessageOnIOThread [this=%p] [pid=%d]", this, getpid());
   LOG("  name: %s", name.c_str());

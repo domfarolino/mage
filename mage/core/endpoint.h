@@ -35,8 +35,9 @@ class Endpoint final {
   Endpoint(const Endpoint&) = delete;
   Endpoint& operator=(const Endpoint&) = delete;
 
-  // This method is called by `Node` on the IO thread. It is only called when a
-  // message is received from a remote node/process via `Channel`. When this is
+  // This method is called by `Node` on the Mage embedder's "IO" thread. It is
+  // only called when a message is received from a remote node/process via
+  // `Channel`; intra-Node messages do not go through this path! When this is
   // called, `state` is either `kBound` or `kUnboundAndQueueing`. See
   // documentation above `AcceptMessageOnDelegateThread()` for more information.
   //   - kBound: We post a task to deliever this message to `delegate_`
@@ -50,6 +51,11 @@ class Endpoint final {
   // this message do not exist until we create them. They might already exist if
   // the endpoints are traveling back to a process they've already been at
   // before, but we do not support that use-case currently.
+  //
+  // TODO(domfarolino): The last sentence above doesn't seem right? I think the
+  // test `MageTest, PassHandleBackAndForthBetweenProcesses` shows that this is
+  // supported, because we constantly re-generate cross-node endpoint names when
+  // proxying.
   void AcceptMessageOnIOThread(Message message);  // Guarded by `lock_`.
 
   // This method is called by `Node` on any thread but the IO thread. It is only
